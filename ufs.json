@@ -1,0 +1,13 @@
+{
+    "repo_area": "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/PDCompiler/UFS",
+    "eco_work_dir_name": "Trial7",
+    "ip_name": "hsio",
+    "chip_name": "lajolla",
+    "process_name": "n2p",
+    "base_var_file": "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/PDCompiler/ufs.var",
+    "block_name": "ufs_top",
+    "tool_name": "FC",
+    "analysis_sequences_name": "{max_tran_eco max_cap_eco} {hold_eco} {setup_eco} ",
+    "timeout_minutes": "720",
+    "check_interval_seconds": "60"
+}

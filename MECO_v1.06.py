@@ -249,7 +249,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
                     specific_failed_node_from_json = jn
                     msg = f"ERROR: {log_prefix}: Node '{jn}' status {jst}"
                     if status_updater: status_updater(msg)
-                    if summary_updater: summary_updater(f"Br: {branch}, St: {stage_name_summary}, Failed@ {specific_failed_node_from_json} ({jst})")
+                    if summary_updater: summary_updater(f"Branch: {branch}, Status: {stage_name_summary}, Failed@ {specific_failed_node_from_json} ({jst})")
                     cleanup_log = False; return "FAILED", msg, specific_failed_node_from_json
                 # --- END MODIFIED LOGIC ---
 
@@ -272,7 +272,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
                 if all_relevant_jobs_are_valid_or_skipped:
                     msg = f"INFO: {log_prefix}: All {len(statuses_found)} nodes matching '{node_pattern}' are VALID or implicitly SKIPPED."
                     if status_updater: status_updater(msg)
-                    if summary_updater: summary_updater(f"Br: {branch}, St: {stage_name_summary}, VALID") # Summary still shows VALID
+                    if summary_updater: summary_updater(f"Branch: {branch}, Status: {stage_name_summary}, VALID") # Summary still shows VALID
                     if os.path.exists(log_file_path):
                         try: os.remove(log_file_path)
                         except OSError:
@@ -325,7 +325,7 @@ def prepare_iter_var_file(base_var_path, current_branch, prev_branch, eco_work_d
     # eco_work_dir_abs is the absolute path to the specific ECO run directory (e.g. .../RepoArea/run/MyEcoRun1)
     if status_updater: status_updater(f"INFO: Preparing var file for br: {current_branch} (prev: {prev_branch}) using base: {base_var_path}")
 
-    op, t = ("ndm", "fc") if tool_name == "FC" else (("enc.dat", "invs") if tool_name == "Innovus" else (None, None))
+    op, t = ("ndm", "icc2") if tool_name == "FC" else (("enc.dat", "invs") if tool_name == "Innovus" else (None, None))
     if not op: 
         if status_updater: status_updater(f"ERROR: Invalid TOOL: {tool_name}")
         return None
@@ -364,9 +364,11 @@ def prepare_iter_var_file(base_var_path, current_branch, prev_branch, eco_work_d
     try:
         if not chipfinish_source_dir: raise ValueError("chipfinish_source_dir not determined.")
         bbsets = f"""\n# --- Auto-gen settings by ECO script for branch: {current_branch} ---
-bbset chipfinish.source {{{chipfinish_source_dir}}}
+bbset hierarchy.{block_name}.chipfinish.source {{{chipfinish_source_dir}}}
 bbset pex.FillOasisFiles {{{os.path.join(pre_dir_context, 'pdp/dummyfill/outs', f'{block_name}.dummyfill.beol.oas')}}}
+#May not need pex.source
 bbset pex.source {{{os.path.join(pre_dir_context, 'pex')}}}
+bbset pdp.ipmerge.layout {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.oasis')}}}
 bbset pnr.applyeco.InputDatabase {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.{op}')}}}
 bbset pnr.applyeco.ECOChangeFile {{{os.path.join(pre_dir_context, 'pceco/pceco/outs', f'eco.{t}.tcl')}}}
 bbset pnr.applyeco.ECOPrefix "MECO_{current_branch}_"
@@ -545,10 +547,10 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                 if not run_bob_command(run_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater, timeout_minutes=timeout_minutes):
                     failed_info.update({"is_failed_state":True, "branch":current_iter_name, "node_pattern":stage_node_pattern_for_run, "specific_node":f"{stage_node_pattern_for_run} (bob run cmd fail)"})
                     process_outcome="FAILED"; completion_callback(process_outcome)
-                    status_updater(f"ERROR: 'bob run' for {stage_node_pattern_for_run} fail. User action needed."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, 'bob run' FAIL. Click Continue.")
+                    status_updater(f"ERROR: 'bob run' for {stage_node_pattern_for_run} fail. User action needed."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, 'bob run' FAIL. Click Continue.")
                     continue_event.wait(); continue_event.clear()
                     if abort_flag.is_set(): raise RuntimeError("Aborted after 'bob run' cmd fail.")
-                    status_updater("INFO: Continue. Retry 'bob run'..."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, Retry 'bob run'"); failed_info["is_failed_state"]=False; continue
+                    status_updater("INFO: Continue. Retry 'bob run'..."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Retry 'bob run'"); failed_info["is_failed_state"]=False; continue
 
                 status_updater(f"INFO: --- Waiting for stage type: {stage_type} (pattern: {stage_node_pattern_for_run}) ---")
                 wait_status, wait_msg, specific_failed_node_from_json = wait_for_bob_run(eco_work_dir, current_iter_name, stage_node_pattern_for_run, timeout_minutes, check_interval, status_updater, summary_updater)
@@ -580,18 +582,18 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                         
                         if not os.path.isfile(gui_base_var_path_on_continue):
                             status_updater(f"ERROR: New Base Var '{gui_base_var_path_on_continue}' invalid. Fix & Continue.")
-                            summary_updater(f"Br:{current_iter_name},St:{stage_type}, Invalid new Base Var. Fix & Continue."); continue
+                            summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Invalid new Base Var. Fix & Continue."); continue
 
                         if gui_base_var_path_on_continue != current_effective_base_for_iterations:
                             status_updater(f"INFO: Base Var changed by user from '{current_effective_base_for_iterations}' to '{gui_base_var_path_on_continue}'.")
-                            summary_updater(f"Br:{current_iter_name},St:{stage_type}, BaseVar changed, updating flow.vars...")
+                            summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, BaseVar changed, updating flow.vars...")
                             
                             newly_appended_var_for_flow_override = prepare_iter_var_file(
                                 gui_base_var_path_on_continue, current_iter_name, prev_iter, 
                                 eco_work_dir, block_name, tool_name, status_updater
                             )
                             if not newly_appended_var_for_flow_override:
-                                status_updater(f"ERROR: Re-prep var file with new base FAIL. User action needed."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, Re-prep var FAIL."); continue
+                                status_updater(f"ERROR: Re-prep var file with new base FAIL. User action needed."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Re-prep var FAIL."); continue
                             
                             #******kumkumn******
                             #also add bbsets to the new var file
@@ -603,7 +605,7 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                             ):
                             # If adding the analysis bbsets fails
                                 status_updater(f"ERROR: Failed to add specific analysis bbsets for flow override for '{current_iter_name}'. Aborting.");
-                                summary_updater(f"Br:{current_iter_name},St:{stage_type}, Add Analysis BBSET FAIL.");
+                                summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Add Analysis BBSET FAIL.");
                                 continue # Or raise a RuntimeError, depending on desired error behavior
                             #code segment to add bbset commands end here 
 
@@ -655,7 +657,7 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                         else:
                             status_updater(f"INFO: Base Var File not changed by user.")
 
-                        status_updater(f"INFO: Continue. Retrying failed node '{latest_actual_failed_node_path}'..."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, Retry {latest_actual_failed_node_path}")
+                        status_updater(f"INFO: Continue. Retrying failed node '{latest_actual_failed_node_path}'..."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Retry {latest_actual_failed_node_path}")
                         failed_info["is_failed_state"]=False
                         
                         inval_cmd_list = ["bob", "update","status", "-r", eco_work_dir,"--branch", current_iter_name, "--invalidate", latest_actual_failed_node_path,"-f"]
@@ -663,11 +665,11 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                         
                         status_updater(f"INFO: Invalidating node: {' '.join(inval_cmd_list)}")
                         if not run_bob_command(inval_cmd_list, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=None, timeout_minutes=5):
-                            status_updater(f"ERROR: 'bob update status' (invalidate) failed for {latest_actual_failed_node_path}. User action needed."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, Invalidate FAIL."); continue
+                            status_updater(f"ERROR: 'bob update status' (invalidate) failed for {latest_actual_failed_node_path}. User action needed."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Invalidate FAIL."); continue
                         
                         status_updater(f"INFO: Re-running node: {' '.join(rerun_cmd_list)}")
                         if not run_bob_command(rerun_cmd_list, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater, timeout_minutes=timeout_minutes):
-                            status_updater(f"ERROR: 'bob run' (retry) for {latest_actual_failed_node_path} fail. User action needed."); summary_updater(f"Br:{current_iter_name},St:{stage_type}, Retry 'bob run' FAIL."); latest_actual_failed_node_path += " (retry run fail)"; continue
+                            status_updater(f"ERROR: 'bob run' (retry) for {latest_actual_failed_node_path} fail. User action needed."); summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Retry 'bob run' FAIL."); latest_actual_failed_node_path += " (retry run fail)"; continue
 
                         status_updater(f"INFO: --- Waiting for retried node: {latest_actual_failed_node_path} ---")
                         retry_wait_status, _, retry_specific_fail = wait_for_bob_run(eco_work_dir, current_iter_name, latest_actual_failed_node_path, timeout_minutes, check_interval, status_updater, summary_updater)
@@ -683,12 +685,12 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
                                 break 
                             else: 
                                 status_updater(f"ERROR: Stage type {stage_type} ({stage_node_pattern_for_run}) still not VALID (status: {final_check_status}) after {latest_actual_failed_node_path} retry. User action needed.")
-                                summary_updater(f"Br:{current_iter_name},St:{stage_type}, Post-retry check FAIL.")
+                                summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Post-retry check FAIL.")
                                 latest_actual_failed_node_path = f"{stage_node_pattern_for_run} (post-retry check fail)" 
                                 continue 
                         else: 
                             status_updater(f"ERROR: Retry for '{latest_actual_failed_node_path}' FAIL (status {retry_wait_status}). User action needed.")
-                            summary_updater(f"Br:{current_iter_name},St:{stage_type}, Retry {latest_actual_failed_node_path} VALIDATION FAIL.")
+                            summary_updater(f"Branch:{current_iter_name},Status:{stage_type}, Retry {latest_actual_failed_node_path} VALIDATION FAIL.")
                             latest_actual_failed_node_path = retry_specific_fail if retry_specific_fail else latest_actual_failed_node_path + " (retry wait fail)"
                             continue 
 
@@ -702,7 +704,7 @@ def run_eco_logic(initial_base_var_file, block_name, tool_name, analysis_sequenc
     except Exception as e:
         if process_outcome=="UNKNOWN": process_outcome="ERROR" if not abort_flag.is_set() else "ABORTED"
         err_msg = f"\n{'!'*20} ECO PROCESS {process_outcome} {'!'*20}\n"
-        err_msg += f"REASON: {e}\n" if "Process aborted" in str(e) else f"ERROR @ Br: {current_branch_for_error}, St: {current_stage_for_error}\nDETAILS: {e}\n"
+        err_msg += f"REASON: {e}\n" if "Process aborted" in str(e) else f"ERROR @ Branch: {current_branch_for_error}, Status: {current_stage_for_error}\nDETAILS: {e}\n"
         summary_updater(f"{process_outcome}: {current_stage_for_error}")
         status_updater(err_msg)
     finally:
