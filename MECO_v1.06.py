@@ -772,8 +772,8 @@ class EcoRunnerApp(tk.Tk):
         ttk.Label(config_frame, text="TOOL:", foreground="darkblue").grid(row=current_row, column=2, padx=(20,5), pady=3, sticky=tk.W)
         self.tool_var = tk.StringVar(); self.tool_combo = ttk.Combobox(config_frame, textvariable=self.tool_var, values=["FC", "Innovus"], state="readonly", width=10); self.tool_combo.grid(row=current_row, column=3, padx=5, pady=3, sticky=tk.W+tk.E); self.tool_combo.set("FC"); current_row+=1
         
-        # Base Var File
-        ttk.Label(config_frame, text="Base Var File (optional):", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
+        # Block Specific Var File
+        ttk.Label(config_frame, text="Block specific Var File (optional):", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
         self.var_file_var = tk.StringVar(); self.var_file_entry = ttk.Entry(config_frame, textvariable=self.var_file_var, width=60); self.var_file_entry.grid(row=current_row, column=1, columnspan=2, padx=5, pady=3, sticky=tk.EW)
         self.var_file_browse = ttk.Button(config_frame, text="Browse...", command=lambda: self.browse_file(self.var_file_var), style="File.TButton"); self.var_file_browse.grid(row=current_row, column=3, padx=5, pady=3); current_row+=1
         
@@ -880,7 +880,7 @@ class EcoRunnerApp(tk.Tk):
         if not self.winfo_exists(): return
         self.update_status_display(f"PROCESS: ECO Run Outcome = {outcome}")
         final_msg_map = { "SUCCESS": ("ECO Run Complete", "The ECO process finished successfully.", messagebox.showinfo),
-            "FAILED": ("Run Failed", f"Run failed @ node: {failed_info.get('specific_node','N/A')}\nFix issue, optionally edit Base Var File, and click CONTINUE, or ABORT.", messagebox.showwarning),
+            "FAILED": ("Run Failed", f"Run failed @ node: {failed_info.get('specific_node','N/A')}\nFix issue, optionally edit Block Specific Var File, and click CONTINUE, or ABORT.", messagebox.showwarning),
             "ABORTED": ("ECO Run Aborted", "The ECO process was aborted.", messagebox.showwarning),
             "TIMEOUT": ("ECO Run Timeout", "The ECO process timed out.", messagebox.showerror), }
         title, msg, mbox_func = final_msg_map.get(outcome, ("ECO Run Error", f"ECO process failed: {outcome}.", messagebox.showerror))
