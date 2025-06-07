@@ -19,18 +19,18 @@ import json
 import re
 
 # --- Default Project/Flow Configuration --- #
-DEFAULT_SETUP_REPO_AREA = "./BOB_Setup_RepoArea" # Renamed from DEFAULT_SETUP_WORK_AREA
-DEFAULT_ECO_WORK_DIR_NAME = "My_ECO_Run" # Default name for the dir inside <RepoArea>/run/
+DEFAULT_SETUP_REPO_AREA = "MECO_REPO" # Renamed from DEFAULT_SETUP_WORK_AREA
+DEFAULT_ECO_WORK_DIR_NAME = "Trial1_meco" # Default name for the dir inside <RepoArea>/run/
 DEFAULT_CHIP_NAME = "lajolla"
 DEFAULT_PROCESS_NODE = "n2p"
-DEFAULT_IP_NAME = "gpcm"
+DEFAULT_IP_NAME = "hsio"
 DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 720
 DEFAULT_BOB_CHECK_INTERVAL_SECONDS = 60
 # --- End Default Configuration --- #
 
 #******kumkumn******
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
-DEFAULT_RUN_VAR_FILE_NAME = "run_var_file.var" #for the output var file name, this is used by the script to make a new var file using the default and user provided files
+DEFAULT_RUN_VAR_FILE_NAME = "final_var_file.var" #for the output var file name, this is used by the script to make a new var file using the default and user provided files
 
 # Default for the new analysis field
 # 2 tran/cap 2 setup 2 hold and 1 tran/cap
@@ -158,7 +158,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
 
     pid = os.getpid(); timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     safe_node_pattern_for_file = re.sub(r'[\\/*?"<>|:]', '_', node_pattern)
-    temp_log_filename = f"tmp_bob_info_{branch}_{safe_node_pattern_for_file}_{timestamp}_{pid}.json"
+    temp_log_filename = f"bob_info_{branch}_{safe_node_pattern_for_file}_{timestamp}.json"
     # Log file should be inside the ECO work dir (run_area)
     log_file_path = os.path.join(run_area, temp_log_filename) 
 
@@ -181,7 +181,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
 
         elapsed_minutes = int((time.time() - start_time) / 60)
         current_summary_disp = last_statuses_summary if last_statuses_summary else "Polling"
-        if summary_updater: summary_updater(f"Br: {branch}, St: {stage_name_summary}, Status: {current_summary_disp}, Elap: {elapsed_minutes}m")
+        if summary_updater: summary_updater(f"Branch: {branch}, Stage: {stage_name_summary}, Status: {current_summary_disp}, Elap: {elapsed_minutes}m")
 
         if (time.time() - start_time) > timeout_seconds:
             msg = f"ERROR: {log_prefix}: TIMEOUT after {timeout_minutes}m."
@@ -758,7 +758,7 @@ class EcoRunnerApp(tk.Tk):
         self.process_var = tk.StringVar(value=DEFAULT_PROCESS_NODE); self.process_entry = ttk.Entry(config_frame, textvariable=self.process_var, width=30); self.process_entry.grid(row=current_row, column=1, padx=5, pady=3, sticky=tk.W); current_row+=1
         
         # ECO Work Dir Name
-        ttk.Label(config_frame, text="ECO Work Dir Name (in RepoArea/run/):", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(config_frame, text="ECO Work Dir Name :", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
         self.eco_work_dir_name_var = tk.StringVar(value=DEFAULT_ECO_WORK_DIR_NAME)
         self.eco_work_dir_name_entry = ttk.Entry(config_frame, textvariable=self.eco_work_dir_name_var, width=60)
         self.eco_work_dir_name_entry.grid(row=current_row, column=1, columnspan=2, padx=5, pady=3, sticky=tk.EW)
@@ -778,7 +778,7 @@ class EcoRunnerApp(tk.Tk):
         self.var_file_browse = ttk.Button(config_frame, text="Browse...", command=lambda: self.browse_file(self.var_file_var), style="File.TButton"); self.var_file_browse.grid(row=current_row, column=3, padx=5, pady=3); current_row+=1
         
         # Analysis per Iteration (main input for iterations)
-        ttk.Label(config_frame, text="Analysis per Iteration (ex. {max_tran_eco max_cap_eco} {setup_eco}):", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(config_frame, text="Analysis per Iteration :", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
         self.analysis_input_text = tk.Text(config_frame, width=50, height=3, wrap=tk.WORD)
         self.analysis_input_text.grid(row=current_row, column=1, columnspan=2, padx=5, pady=3, sticky=tk.EW)
         self.analysis_input_text.insert(tk.END, DEFAULT_ANALYSIS_INPUT)
