@@ -1,0 +1,109 @@
+####### TEMPLATE USER VAR FILE #######
+
+#user has to provide chipfinish PRO db 
+bbset chipfinish.source		{}
+
+#user to provide SCF pushdown
+bbns scf { 
+    bbset SOC_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/soc_constraints/LAJ_A0_M3/LAJ_A0_M3_20250424"
+    bbset FUNC_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/func_common_constraints/LAJ_A0_M3/LAJ_A0_M3_21_APR_2025"
+    bbset SCF_CODE_HOME "/google/gchips/ipreleases/lajolla_scf/scf_code/LAJ_A0_M3/LAJ_A0_M3_05_Feb_V3_2025"
+    bbset scf.DFT_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/dft_common_constraints/LAJ_A0_M3/LAJ_A0_M3_01_APR_2025_REV1"
+    bbset scf.TECH_HOME "/google/gchips/ipreleases/lajolla_scf/tech_common_constraints/LAJ_A0_M3/LAJ_A0_M3_16_APR_2025_REV4"    
+}
+bbset scf.common_constraints_override 1
+
+
+##############
+#### PEX #####
+##############
+
+#user has to provide Macro Def/Lef Files
+bbset pex.MacroDefFiles		{}
+bbset pex.MacroLibraryFileExclude	""
+bbset pex.MacroLefFiles		{}
+
+
+##############
+#### MMMC #####
+##############
+
+# Explicitly specify the UPF for each mode
+#user can optionally provide func, shift, capture Upf
+#by default, func and shift are taken
+#bbset mmmc.mode.func.StaUpf	{}
+#bbset mmmc.mode.shift.StaUpf	{}
+#bbset mmmc.mode.capture.StaUpf	{}
+#bbset mmmc.mode.StaUpf		{}
+
+########## CONSTRAINTS ############
+#user has to set mmc mode list
+bbset mmmc.mode.modes		{}
+
+#user has to set Sdc for func, shift and capture modes
+bbset mmmc.mode.func.StaSdc 	""
+bbset mmmc.mode.shift.StaSdc 	""
+bbset mmmc.mode.capture.StaSdc 	""
+
+#constraints
+#user has to set the Valid Constraint Mode for STA
+bbset sta.config.ValidConstraintModeName	{}
+
+
+########### mmc commands ##########
+#user has to provide mmmc modes, StaSdc for those modes
+#user has to provide vdomains and rails
+#user has to provide scenarios and constraints
+
+
+
+
+
+
+##############
+#### STA #####
+##############
+
+#sta run name set to my_run_dir by default
+bbset sta.metrics.run_name           {my_run_dir}
+
+# Mail list
+#bbset sta.metrics.maillist           {}
+
+#user can optioanlly provide STA scenarios
+#one set is already included in the base var file
+#bbset sta.runs {}
+
+################
+#### PCECO #####
+################
+
+#user can optionally provide scenarios for setup and hold fixing
+#one set of scenarios is already included in the base var file
+#bbns pceco {
+#    bbset SetupScenarios  {} -comment {Scenario list for setup fixing}
+#    bbset HoldScenarios   {} -comment {Scenario list for hold fixing}
+#}
+
+#user can optionally provide Dont touch Inst and size only cells
+bblappend pceco.plugins.setup_dont_touch.DontTouchInst		{} 
+bblappend pceco.plugins.setup_dont_touch.SizeOnlyCells		{}
+
+#bbset pceco.plugins.eco_cell_types.DelayCellList {}
+#user can optionally provide dont use cells for eco
+bblappend eco.DontUseCells {}
+bblappend eco.DontUseCells {}
+
+#user has to provide DRC type   
+bbset pceco.plugins.smsa_eco.DRCType {}
+
+################
+#### PNR #####
+################
+
+#user has to provide pnr watermark tag
+bbset pnr.WatermarkRTLTag            {} 
+
+#user can optionally provide pnr scenarios and default status
+#bbset pnr.scenarios.Scenarios {}
+#bbset pnr.scenarios.status.Default   {}
