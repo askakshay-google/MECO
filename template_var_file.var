@@ -86,13 +86,13 @@ bbset sta.metrics.run_name           {my_run_dir}
 #}
 
 #user can optionally provide Dont touch Inst and size only cells
-bblappend pceco.plugins.setup_dont_touch.DontTouchInst		{} 
-bblappend pceco.plugins.setup_dont_touch.SizeOnlyCells		{}
+bbconcat pceco.plugins.setup_dont_touch.DontTouchInst		{} 
+bbconcat pceco.plugins.setup_dont_touch.SizeOnlyCells		{}
 
 #bbset pceco.plugins.eco_cell_types.DelayCellList {}
 #user can optionally provide dont use cells for eco
-bblappend eco.DontUseCells {}
-bblappend eco.DontUseCells {}
+bbconcat eco.DontUseCells {}
+bbconcat eco.DontUseCells {}
 
 #user has to provide DRC type   
 bbset pceco.plugins.smsa_eco.DRCType {}
@@ -107,3 +107,17 @@ bbset pnr.WatermarkRTLTag            {}
 #user can optionally provide pnr scenarios and default status
 #bbset pnr.scenarios.Scenarios {}
 #bbset pnr.scenarios.status.Default   {}
+#
+
+#ADD this only if you see issue in applyeco stage with staple vias
+#bbappend pnr.fc.ECOSetupPreCallback {
+#    proc ::applyeco::delete_staple_vias { } {
+#    
+#        if {[sizeof_collection [get_vias -quiet -filter tag==STAPLE_VIA]]} {
+#            remove_vias [get_vias -quiet -filter tag==STAPLE_VIA] -force
+#        }
+#    
+#        return 0
+#    
+#    }
+#}

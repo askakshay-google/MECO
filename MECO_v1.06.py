@@ -238,6 +238,7 @@ bbset Tool(pnr) {t_name}
 {rec}
 bbset pex.FillOasisFiles {{{os.path.join(pre_dir_context, 'pdp/dummyfill/outs', f'{block_name}.dummyfill.beol.oas')}}}
 bbset pex.source {{{os.path.join(pre_dir_context, 'pex')}}}
+bbset pex.TopDefFile {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.pex.def.gz')}}}
 bbset pnr.applyeco.InputDatabase {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.{op}')}}}
 bbset pnr.applyeco.ECOChangeFile {{{os.path.join(pre_dir_context, 'pceco/pceco/outs', f'eco.{t}.tcl')}}}
 # --- End Auto-gen settings ---\n"""
@@ -336,6 +337,9 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
             stage_idx = 0
             while stage_idx < len(stages_to_run):
                 stage_type = stages_to_run[stage_idx]
+                #ASK updated
+                if stage_type == "applyeco" : 
+                    stage_type = "pnr"
                 run_node_pattern = f"{stage_type}/*"
                 current_stage_for_error = f"run_{current_iter_name}_{stage_type}"
                 if abort_flag.is_set(): raise RuntimeError("Aborted")

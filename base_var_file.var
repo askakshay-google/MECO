@@ -54,7 +54,7 @@ bbset sta.config.link_design.ErrorOnBlackBoxes {False}                          
 bbset sta.config.link_design.ErrorOnDesignMismatch {False}
 bbset sta.config.setup_sdc.SaveSourceFileInformation.enable {True}  ;# doesnt work in the latest session
 bbset sta.config.setup_sdc.SaveSourceFileInformation {True}
-
+bbset sta.config.ValidConstraintModeName    {[bbget .mmmc.mode.modes]}
 #####Enable for placement stage
 bbset sta.config.mtbf_checker.enable {True}                                                           {#Enable mtbf checker plugin}
 #bbset sta.config.setup_hypertrace.enable {False}
