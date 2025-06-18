@@ -24,7 +24,7 @@ DEFAULT_CHIP_NAME = "lajolla"
 DEFAULT_PROCESS_NODE = "n2p"
 DEFAULT_IP_NAME = "hsio"
 DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 720
-DEFAULT_BOB_CHECK_INTERVAL_SECONDS = 60
+DEFAULT_BOB_CHECK_INTERVAL_SECONDS = 30
 # --- End Default Configuration --- #
 
 # Constant for key nodes to check for VALID status per stage. Wildcards are supported.
@@ -39,7 +39,8 @@ KEY_NODES_PER_STAGE = {
 
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
 
-DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco} {hold_eco} {hold_eco} {setup_eco} {max_tran_eco max_cap_eco}"
+DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max_cap_eco setup_eco hold_eco} {setup_eco hold_eco} {setup_eco hold_eco max_tran_eco}"
+
 
 MAIN_ITER_STAGES = ["pdp", "pex", "sta", "pceco", "applyeco"]
 LAST_ITER_STAGES = ["pdp", "pex", "sta"]
