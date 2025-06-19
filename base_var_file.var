@@ -2,7 +2,17 @@
 #### PDP #####
 ##############
 
-bbset pdp.runpdp.jobs                {ipmerge designin dummyfill}
+bbns .pdp {
+        bbset runpdp.jobs "ipmerge dummyfill designin"
+        bbns dummyfill {
+                bbset merge true
+                bbset feol true
+                bbset beol true
+                bbset turbo 8
+                bbset cores 8
+                bbset memory 128000
+        }
+}
 #bbset pdp.ipmerge.strict             {false}
 
 ##############
