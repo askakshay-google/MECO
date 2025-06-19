@@ -37,6 +37,9 @@ KEY_NODES_PER_STAGE = {
     "applyeco": "pnr/chipfinish"
 }
 
+# ADDED: DSA script path
+DSA_SCRIPT_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/kvikass/scripts/dsa.py"
+
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
 
 DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max_cap_eco setup_eco hold_eco} {setup_eco hold_eco} {setup_eco hold_eco max_tran_eco}"
@@ -55,6 +58,14 @@ failed_info = {
     "specific_node": None
 }
 
+# ADDED: To handle abort and continue
+abort_resume_info = {
+    "is_aborted_state": False,
+    "branch": None,
+    "stage": None
+}
+
+
 def get_script_directory():
     """Returns the directory where the current Python script is located."""
     return os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +75,8 @@ def get_script_directory():
 # =============================================================================
 
 def run_bob_command(command, work_dir=".", status_updater=None, summary_updater=None, timeout_minutes=DEFAULT_BOB_RUN_TIMEOUT_MINUTES):
-    if abort_flag.is_set():
+    # MODIFIED: Check for abort_resume_info as well
+    if abort_flag.is_set() and not abort_resume_info["is_aborted_state"]:
         if status_updater: status_updater("INFO: Abort requested. Skipping command.")
         return False
 
@@ -122,7 +134,8 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
     all_final_statuses = {}
 
     while True:
-        if abort_flag.is_set():
+        # MODIFIED: Check for abort_resume_info as well
+        if abort_flag.is_set() and not abort_resume_info["is_aborted_state"]:
             if os.path.exists(log_file_path):
                 try: os.remove(log_file_path)
                 except OSError: pass
@@ -174,7 +187,6 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
 
             summary_text = ", ".join(sorted(list(set(statuses_found.values())))) if statuses_found else "Polling..."
             if summary_text != last_statuses_summary:
-                # Change 1: Show branch in status bar
                 update_msg = f"Branch '{branch}': Waiting for {node_pattern}. Status: {summary_text}"
                 if status_updater: status_updater(f"INFO: {log_prefix}: Statuses: {summary_text}")
                 if summary_updater: summary_updater(update_msg)
@@ -301,10 +313,11 @@ def _add_analysis_bbsets_to_var_file(final_var_file_path, current_iter_name,
             return False
     return True
 
+# MODIFIED: Added dsa_enabled parameter
 def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_name, num_iterations, eco_work_dir,
-                  timeout_minutes, check_interval,
+                  timeout_minutes, check_interval, dsa_enabled,
                   status_updater, summary_updater, completion_callback, get_gui_block_specific_var_file_func):
-    global failed_info
+    global failed_info, abort_resume_info
     current_stage_for_error, current_branch_for_error, process_outcome = "setup", "N/A", "UNKNOWN"
 
     try:
@@ -316,35 +329,60 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
         prev_iter = ""
         block_specific_var_path_for_run = get_gui_block_specific_var_file_func()
 
-        for i, current_iter_name in enumerate(all_iterations):
+        iter_idx = 0
+        while iter_idx < len(all_iterations):
+            current_iter_name = all_iterations[iter_idx]
             current_branch_for_error = current_iter_name
             stages_to_run = MAIN_ITER_STAGES if current_iter_name != "Last_iter" else LAST_ITER_STAGES
 
-            summary_updater(f"Branch '{current_iter_name}': Preparing...")
-            status_updater(f"\n{'='*20} Prep Branch: '{current_iter_name}' {'='*20}")
-            if abort_flag.is_set(): raise RuntimeError("Aborted")
+            # MODIFIED: Logic to handle resuming from an abort
+            start_stage_idx = 0
+            if abort_resume_info["is_aborted_state"] and abort_resume_info["branch"] == current_iter_name:
+                try:
+                    start_stage_idx = stages_to_run.index(abort_resume_info["stage"])
+                    status_updater(f"INFO: Resuming from aborted state at Branch: {current_iter_name}, Stage: {abort_resume_info['stage']}")
+                    summary_updater(f"Branch '{current_iter_name}': Resuming at stage '{abort_resume_info['stage']}'")
+                except ValueError:
+                    status_updater(f"WARN: Aborted stage '{abort_resume_info['stage']}' not found in current iteration. Starting from beginning.")
+                abort_resume_info["is_aborted_state"] = False
+            else:
+                summary_updater(f"Branch '{current_iter_name}': Preparing...")
+                status_updater(f"\n{'='*20} Prep Branch: '{current_iter_name}' {'='*20}")
+                if abort_flag.is_set(): raise RuntimeError("Aborted")
 
-            current_stage_for_error = f"prepare_var_{current_iter_name}"
-            final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater)
-            if not final_var_file or not _add_analysis_bbsets_to_var_file(final_var_file, current_iter_name, analysis_sequences_name, status_updater):
-                raise RuntimeError(f"FAIL: Prepare var file for '{current_iter_name}'. See log for details (e.g., missing 'chipfinish.source' in block specific var file).")
+                current_stage_for_error = f"prepare_var_{current_iter_name}"
+                final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater)
+                if not final_var_file or not _add_analysis_bbsets_to_var_file(final_var_file, current_iter_name, analysis_sequences_name, status_updater):
+                    raise RuntimeError(f"FAIL: Prepare var file for '{current_iter_name}'. See log for details (e.g., missing 'chipfinish.source' in block specific var file).")
 
-            current_stage_for_error = f"create_{current_iter_name}"
-            create_cmd = ["bob", "create", "-r", eco_work_dir, "-v", final_var_file, "-s"] + stages_to_run
-            if current_iter_name != "main": create_cmd[2:2] = ["--branch", current_iter_name]
-            if not run_bob_command(create_cmd, work_dir=eco_work_dir, status_updater=status_updater):
-                raise RuntimeError(f"FAIL: 'bob create' for '{current_iter_name}'.")
+                current_stage_for_error = f"create_{current_iter_name}"
+                create_cmd = ["bob", "create", "-r", eco_work_dir, "-v", final_var_file, "-s"] + stages_to_run
+                if current_iter_name != "main": create_cmd[2:2] = ["--branch", current_iter_name]
+                if not run_bob_command(create_cmd, work_dir=eco_work_dir, status_updater=status_updater):
+                    raise RuntimeError(f"FAIL: 'bob create' for '{current_iter_name}'.")
 
-            stage_idx = 0
+            stage_idx = start_stage_idx
             while stage_idx < len(stages_to_run):
                 stage_type = stages_to_run[stage_idx]
-                #ASK updated
+                
+                # ADDED: Update current stage for abort info
+                abort_resume_info["branch"] = current_iter_name
+                abort_resume_info["stage"] = stage_type
+
                 if stage_type == "applyeco" : 
                     stage_type = "pnr"
+                
                 run_node_pattern = f"{stage_type}/*"
                 current_stage_for_error = f"run_{current_iter_name}_{stage_type}"
                 if abort_flag.is_set(): raise RuntimeError("Aborted")
 
+                # MODIFIED: DSA logic - determine key node before run
+                key_pattern = KEY_NODES_PER_STAGE.get(stage_type)
+                is_dsa_stage = (stage_type == 'sta' and dsa_enabled)
+                if is_dsa_stage:
+                    key_pattern = "sta/sta.bb_summary"
+                    status_updater("INFO: DSA mode enabled. Key node for 'sta' set to 'sta/sta.bb_summary'")
+                
                 summary_updater(f"Branch '{current_iter_name}': Running stage '{stage_type}'")
                 run_cmd = ["bob", "run", "-r", eco_work_dir, "--branch", current_iter_name, "--node", run_node_pattern]
                 if not run_bob_command(run_cmd, work_dir=eco_work_dir, status_updater=status_updater):
@@ -353,9 +391,11 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                 summary_updater(f"Branch '{current_iter_name}': Waiting for stage '{stage_type}'")
                 wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, run_node_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
                 if wait_status != "COMPLETED":
+                    # MODIFIED: Handle ABORTED state from wait_for_bob_run
+                    if wait_status == "ABORTED":
+                         raise RuntimeError("Aborted")
                     raise RuntimeError(f"{wait_status} waiting for {stage_type}: {wait_msg}")
 
-                key_pattern = KEY_NODES_PER_STAGE.get(stage_type)
                 failed_key_node = next((name for name, status in all_statuses.items() if status != "VALID" and fnmatch.fnmatch(name, key_pattern or "")), None)
 
                 if failed_key_node:
@@ -367,7 +407,6 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                         continue_event.wait(); continue_event.clear()
                         if abort_flag.is_set(): raise RuntimeError("Aborted")
 
-                        # Change 2: Handle updated block specific var file
                         new_block_specific_path = get_gui_block_specific_var_file_func()
                         if new_block_specific_path != block_specific_var_path_for_run:
                             status_updater("INFO: New block-specific var file detected. Re-creating final var file...")
@@ -409,13 +448,81 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                              status_updater(f"ERROR: Retry for '{key_node_for_stage}' also failed. Try again.")
                              summary_updater(f"Branch '{current_iter_name}': FAILED, node '{key_node_for_stage}' failed again.")
                     continue
-                else:
+                else: # Stage passed
+                    # ADDED: DSA Logic Execution
+                    if is_dsa_stage:
+                        summary_updater(f"Branch '{current_iter_name}': sta stage valid, running DSA flow...")
+                        status_updater("INFO: 'sta/sta.bb_summary' is VALID. Running DSA post-processing.")
+                        
+                        iter_area = os.path.join(eco_work_dir, current_iter_name)
+                        merge_dir = os.path.join(iter_area, "sta", "merge")
+                        dsa_output_file = os.path.join(merge_dir, "dsa_ufs")
+                        scenarios_file = os.path.join(iter_area, "sta", "scenarios.txt")
+
+                        # 1. Run dsa.py script
+                        dsa_cmd = f"python3 {DSA_SCRIPT_PATH} --merge_dir {merge_dir} --output {dsa_output_file}"
+                        if not run_bob_command(dsa_cmd, work_dir=iter_area, status_updater=status_updater, summary_updater=summary_updater):
+                            raise RuntimeError("DSA script execution failed.")
+                        
+                        # 2. Run grep/awk command
+                        grep_cmd = f"grep '^.*[a-z]' {dsa_output_file}/* | grep % | grep -v scenario | awk -F '[|%]' '$3 > 70' | column -t | awk '{{print $2}}' | sort -uk 1 > {scenarios_file}"
+                        status_updater(f"INFO: Running scenario generation command: {grep_cmd}")
+                        try:
+                           subprocess.run(grep_cmd, shell=True, check=True, cwd=iter_area, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           status_updater(f"INFO: Successfully created scenarios.txt at {scenarios_file}")
+                        except subprocess.CalledProcessError as e:
+                           raise RuntimeError(f"Scenario generation command failed: {e.stderr.decode('utf-8')}")
+                        
+                        # 3. Read scenarios.txt and create bbsets
+                        setup_scenarios = []
+                        hold_scenarios = []
+                        if os.path.exists(scenarios_file):
+                            with open(scenarios_file, 'r') as f:
+                                for line in f:
+                                    scenario = line.strip()
+                                    if scenario.endswith('_t'):
+                                        setup_scenarios.append(scenario)
+                                    else:
+                                        hold_scenarios.append(scenario)
+
+                        bbset_lines = "\n# --- DSA Scenarios ---\n"
+                        if setup_scenarios:
+                            bbset_lines += f"bbset pceco.SetupScenarios {{{' '.join(setup_scenarios)}}}\n"
+                        if hold_scenarios:
+                             bbset_lines += f"bbset pceco.HoldScenarios {{{' '.join(hold_scenarios)}}}\n"
+
+                        # 4. Append to var files
+                        final_var_file_path = os.path.join(eco_work_dir, f"final_var_file_{current_iter_name}.var")
+                        flow_var_path = os.path.join(iter_area, "vars", "flow.var")
+                        
+                        try:
+                            with open(final_var_file_path, 'a') as f: f.write(bbset_lines)
+                            status_updater(f"INFO: Appended DSA scenarios to {final_var_file_path}")
+                            if os.path.exists(flow_var_path):
+                                with open(flow_var_path, 'a') as f: f.write(bbset_lines)
+                                status_updater(f"INFO: Appended DSA scenarios to {flow_var_path}")
+                            else:
+                                status_updater(f"WARN: flow.var not found at {flow_var_path}, skipping append.")
+                        except Exception as e:
+                            raise RuntimeError(f"Failed to append DSA scenarios to var files: {e}")
+
+                        # 5. Run bob update commands
+                        bob_update_force_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-d", "pceco", "--force", "--branch", current_iter_name]
+                        bob_update_add_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-a", "pceco", "--force", "--branch", current_iter_name]
+                        
+                        if not run_bob_command(bob_update_force_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater):
+                            raise RuntimeError("bob update --force command failed.")
+                        if not run_bob_command(bob_update_add_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater):
+                            raise RuntimeError("bob update -a command failed.")
+
                     for name, status in all_statuses.items():
                         if status != "VALID" and not (key_pattern and fnmatch.fnmatch(name, key_pattern)):
                             status_updater(f"WARN: Non-key node '{name}' has status '{status}'. Continuing.")
                     stage_idx += 1
-
+            
             prev_iter = current_iter_name
+            iter_idx += 1
+
         process_outcome = "SUCCESS"
         summary_updater("All iterations completed successfully.")
         status_updater(f"\n{'='*20} All iterations COMPLETED successfully. {'='*20}")
@@ -423,16 +530,25 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
         process_outcome = "ERROR" if not abort_flag.is_set() else "ABORTED"
         summary_updater(f"PROCESS {process_outcome}!")
         err_msg = f"\n{'!'*20} ECO PROCESS {process_outcome} {'!'*20}\n"
-        err_msg += f"ERROR @ Branch: {current_branch_for_error}, Stage: {current_stage_for_error}\nDETAILS: {e}\n"
+        # MODIFIED: More detailed error message for abort
+        if process_outcome == "ABORTED":
+            err_msg += f"ABORTED @ Branch: {abort_resume_info.get('branch', 'N/A')}, Stage: {abort_resume_info.get('stage', 'N/A')}\n"
+        else:
+            err_msg += f"ERROR @ Branch: {current_branch_for_error}, Stage: {current_stage_for_error}\nDETAILS: {e}\n"
         status_updater(err_msg)
     finally:
-        if not failed_info.get("is_failed_state", False):
-             completion_callback(process_outcome)
+        # MODIFIED: Handle different completion states
+        if process_outcome == "ABORTED":
+            abort_resume_info["is_aborted_state"] = True
+            completion_callback(process_outcome)
+        elif not failed_info.get("is_failed_state", False):
+            completion_callback(process_outcome)
+
 
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.08)")
+        self.title("Multi-ECO Utility (v1.09)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.is_log_visible = False
@@ -457,17 +573,27 @@ class EcoRunnerApp(tk.Tk):
 
         ttk.Label(config_frame, text="Repo Area (for setup):", foreground="darkgreen").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
         self.repo_area_var = tk.StringVar(value=DEFAULT_SETUP_REPO_AREA)
-        self.repo_area_entry = ttk.Entry(config_frame, textvariable=self.repo_area_var, width=60)
+        self.repo_area_entry = ttk.Entry(config_frame, textvariable=self.repo_area_var, width=100)
         self.repo_area_entry.grid(row=current_row, column=1, columnspan=2, padx=5, pady=3, sticky=tk.EW)
         self.repo_area_browse = ttk.Button(config_frame, text="Browse...", command=lambda: self.browse_directory(self.repo_area_var), style="File.TButton"); self.repo_area_browse.grid(row=current_row, column=3, padx=5, pady=3); current_row+=1
 
         ttk.Label(config_frame, text="IP Name:", foreground="darkgreen").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W); self.ip_var = tk.StringVar(value=DEFAULT_IP_NAME); self.ip_entry = ttk.Entry(config_frame, textvariable=self.ip_var, width=30); self.ip_entry.grid(row=current_row, column=1, padx=5, pady=3, sticky=tk.W);
         ttk.Label(config_frame, text="Chip Name:", foreground="darkgreen").grid(row=current_row, column=2, padx=(20,5), pady=3, sticky=tk.W); self.chip_var = tk.StringVar(value=DEFAULT_CHIP_NAME); self.chip_entry = ttk.Entry(config_frame, textvariable=self.chip_var, width=30); self.chip_entry.grid(row=current_row, column=3, padx=5, pady=3, sticky=tk.W); current_row+=1
-        ttk.Label(config_frame, text="Process:", foreground="darkgreen").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W); self.process_var = tk.StringVar(value=DEFAULT_PROCESS_NODE); self.process_entry = ttk.Entry(config_frame, textvariable=self.process_var, width=30); self.process_entry.grid(row=current_row, column=1, padx=5, pady=3, sticky=tk.W); current_row+=1
+        ttk.Label(config_frame, text="Process:", foreground="darkgreen").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W); self.process_var = tk.StringVar(value=DEFAULT_PROCESS_NODE); self.process_entry = ttk.Entry(config_frame, textvariable=self.process_var, width=30); self.process_entry.grid(row=current_row, column=1, padx=5, pady=3, sticky=tk.W); 
+#current_row+=1
+
+        # ADDED: DSA Checkbutton
+        self.dsa_var = tk.BooleanVar(value=False)
+        self.dsa_checkbutton = ttk.Checkbutton(config_frame, text="DSA", variable=self.dsa_var)
+        self.dsa_checkbutton.grid(row=current_row, column=2, padx=(20,5), pady=3, sticky=tk.W)
+        current_row += 1
+
+
+
 
         ttk.Label(config_frame, text="ECO Work Dir Name :", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
         self.eco_work_dir_name_var = tk.StringVar(value=DEFAULT_ECO_WORK_DIR_NAME)
-        self.eco_work_dir_name_entry = ttk.Entry(config_frame, textvariable=self.eco_work_dir_name_var, width=60)
+        self.eco_work_dir_name_entry = ttk.Entry(config_frame, textvariable=self.eco_work_dir_name_var, width=100)
         self.eco_work_dir_name_entry.grid(row=current_row, column=1, columnspan=2, padx=5, pady=3, sticky=tk.EW); current_row+=1
 
         ttk.Label(config_frame, text="Idle Timeout (minutes):", foreground="darkblue").grid(row=current_row, column=0, padx=5, pady=3, sticky=tk.W)
@@ -534,22 +660,35 @@ class EcoRunnerApp(tk.Tk):
     def browse_file(self, var): var.set(filedialog.askopenfilename() or var.get())
     def browse_directory(self, var): var.set(filedialog.askdirectory() or var.get())
 
+    # MODIFIED: Control state logic updated for 'aborted' state
     def set_controls_state(self, mode):
-        is_running, is_failed, is_idle = (mode == 'running'), (mode == 'failed'), (mode == 'idle')
-        state_map = {'idle': tk.NORMAL, 'running': tk.DISABLED, 'failed': tk.DISABLED}
+        is_running = (mode == 'running')
+        is_failed = (mode == 'failed')
+        is_aborted = (mode == 'aborted')
+        is_idle = (mode == 'idle')
+
+        state_map = {'idle': tk.NORMAL, 'running': tk.DISABLED, 'failed': tk.DISABLED, 'aborted': tk.DISABLED}
         idle_state = state_map[mode]
 
+        # These are always disabled when a process is active (running, failed, aborted)
         for widget in [self.start_button, self.clear_button, self.load_config_button, self.save_config_button,
                        self.repo_area_entry, self.repo_area_browse, self.ip_entry, self.chip_entry,
                        self.process_entry, self.eco_work_dir_name_entry, self.block_entry, self.timeout_entry,
-                       self.interval_entry, self.analysis_input_text]:
+                       self.interval_entry, self.analysis_input_text, self.dsa_checkbutton]:
             widget.config(state=idle_state)
 
         self.tool_combo.config(state="readonly" if is_idle else tk.DISABLED)
+        # Block specific var file can be changed in failed state
         self.block_specific_var_file_entry.config(state=tk.NORMAL if is_idle or is_failed else tk.DISABLED)
         self.block_specific_var_file_browse.config(state=tk.NORMAL if is_idle or is_failed else tk.DISABLED)
-        self.continue_button.config(state=tk.NORMAL if is_failed else tk.DISABLED)
-        self.abort_button.config(state=tk.NORMAL if is_running or is_failed else tk.DISABLED)
+        
+        # Continue button is for failed or aborted states
+        self.continue_button.config(state=tk.NORMAL if is_failed or is_aborted else tk.DISABLED)
+        # Abort button is for running state
+        self.abort_button.config(state=tk.NORMAL if is_running else tk.DISABLED)
+        # Start button is only for idle state
+        self.start_button.config(state=tk.NORMAL if is_idle else tk.DISABLED)
+
 
     def processing_complete(self, outcome):
         self.processing_thread = None
@@ -558,24 +697,56 @@ class EcoRunnerApp(tk.Tk):
         if outcome == "SUCCESS":
             self.summary_var.set("SUCCESS: ECO process completed.")
             messagebox.showinfo("Success", "ECO process finished successfully.")
+            self.set_controls_state('idle')
+            abort_flag.clear()
+            abort_resume_info["is_aborted_state"] = False
         elif outcome == "FAILED":
             self.summary_var.set(f"FAILED: Awaiting user action for node: {failed_info.get('specific_node','N/A')}")
             messagebox.showwarning("Failed", f"Run failed @ key node: {failed_info.get('specific_node','N/A')}\nFix issue (check log at {self.log_file_path}), optionally update var file, then click CONTINUE or ABORT.")
-        else:
+            self.set_controls_state('failed')
+        elif outcome == "ABORTED":
+            # MODIFIED: Handling for abort completion
+            last_branch = abort_resume_info.get('branch', 'N/A')
+            last_stage = abort_resume_info.get('stage', 'N/A')
+            self.summary_var.set(f"Process Aborted. Last Branch: {last_branch}, Last Stage: {last_stage}")
+            messagebox.showinfo("Aborted", f"Process was aborted.\nLast known location:\nBranch: {last_branch}\nStage: {last_stage}\n\nPress CONTINUE to resume from this stage or QUIT.")
+            self.set_controls_state('aborted')
+        else: # ERROR
             self.summary_var.set(f"Process ended with status: {outcome}")
             messagebox.showerror("Error", f"Process ended with status: {outcome}\nCheck log at {self.log_file_path} for details.")
-
-        self.set_controls_state('failed' if outcome == "FAILED" else 'idle')
-        if outcome != "FAILED": abort_flag.clear()
+            self.set_controls_state('idle')
+            abort_flag.clear()
+            abort_resume_info["is_aborted_state"] = False
 
     def continue_processing(self):
-        if failed_info.get("is_failed_state"):
-            self.set_controls_state('running'); continue_event.set()
+        # MODIFIED: Handle continue from both fail and abort
+        if failed_info.get("is_failed_state") or abort_resume_info.get("is_aborted_state"):
+            self.set_controls_state('running')
+            continue_event.set()
 
     def abort_processing(self):
+        # MODIFIED: Abort logic
         self.abort_button.config(state=tk.DISABLED)
-        self.summary_var.set("Aborting process...")
-        abort_flag.set(); continue_event.set()
+        last_branch = abort_resume_info.get('branch', 'N/A')
+        last_stage = abort_resume_info.get('stage', 'N/A')
+        self.summary_var.set(f"Aborting... Last Stage: {last_stage}")
+        
+        # Run bob stop in a separate thread to not freeze the GUI
+        def stop_bob():
+            repo_area = self.repo_area_var.get().strip()
+            run_name = self.eco_work_dir_name_var.get().strip()
+            if repo_area and run_name:
+                 eco_run_dir = os.path.join(os.path.abspath(repo_area), "run", run_name)
+                 self.update_status_display("INFO: User abort requested. Sending 'bob stop'...")
+                 run_bob_command(["bob", "stop", "-r", eco_run_dir], status_updater=self.update_status_display)
+            else:
+                 self.update_status_display("WARN: Could not determine run area for 'bob stop'.")
+            # Set the abort flags after sending the command
+            abort_flag.set()
+            continue_event.set()
+
+        threading.Thread(target=stop_bob, daemon=True).start()
+
 
     def clear_runs(self):
         repo_area = self.repo_area_var.get().strip()
@@ -601,9 +772,15 @@ class EcoRunnerApp(tk.Tk):
                 self.set_controls_state('idle')
 
     def start_processing(self):
+        # MODIFIED: Reset all state variables on start
         self.set_controls_state('running')
         self.status_text.config(state=tk.NORMAL); self.status_text.delete('1.0', tk.END); self.status_text.config(state=tk.DISABLED)
-        abort_flag.clear(); continue_event.clear(); failed_info['is_failed_state'] = False
+        abort_flag.clear(); continue_event.clear()
+        failed_info['is_failed_state'] = False
+        abort_resume_info['is_aborted_state'] = False
+        abort_resume_info['branch'] = None
+        abort_resume_info['stage'] = None
+
 
         try:
             repo_area = os.path.abspath(self.repo_area_var.get().strip())
@@ -626,7 +803,7 @@ class EcoRunnerApp(tk.Tk):
             eco_logic_args = (
                 os.path.join(get_script_directory(), DEFAULT_BASE_VAR_FILE_NAME),
                 self.block_var.get(), self.tool_var.get(), analyses, num_iter,
-                eco_run_dir, timeout_mins, check_secs,
+                eco_run_dir, timeout_mins, check_secs, self.dsa_var.get(), # Pass DSA state
                 self.update_status_display, self.summary_var.set, self.processing_complete,
                 lambda: self.block_specific_var_file_var.get().strip()
             )
@@ -644,6 +821,7 @@ class EcoRunnerApp(tk.Tk):
         cfg = { "repo_area": self.repo_area_var.get(), "eco_work_dir_name": self.eco_work_dir_name_var.get(),
                 "ip_name": self.ip_var.get(), "chip_name": self.chip_var.get(), "process_name": self.process_var.get(),
                 "block_name": self.block_var.get(), "tool_name": self.tool_var.get(),
+                "dsa_enabled": self.dsa_var.get(), # ADDED: Save DSA state
                 "block_specific_var_file": self.block_specific_var_file_var.get(),
                 "analysis_sequences_name": self.analysis_input_text.get("1.0", "end-1c"),
                 "timeout_minutes": self.timeout_var.get(),
@@ -668,6 +846,7 @@ class EcoRunnerApp(tk.Tk):
                 self.process_var.set(cfg.get("process_name",DEFAULT_PROCESS_NODE))
                 self.block_var.set(cfg.get("block_name",""))
                 self.tool_var.set(cfg.get("tool_name","FC"))
+                self.dsa_var.set(cfg.get("dsa_enabled", False)) # ADDED: Load DSA state
                 self.block_specific_var_file_var.set(cfg.get("block_specific_var_file",""))
                 self.analysis_input_text.delete("1.0", "end"); self.analysis_input_text.insert("1.0", cfg.get("analysis_sequences_name", DEFAULT_ANALYSIS_INPUT))
                 self.timeout_var.set(cfg.get("timeout_minutes", str(DEFAULT_BOB_RUN_TIMEOUT_MINUTES)))
@@ -679,7 +858,10 @@ class EcoRunnerApp(tk.Tk):
     def quit_app(self):
         if self.processing_thread and self.processing_thread.is_alive():
             if messagebox.askyesno("Confirm Quit", "A process is running. Quitting will abort the process. Quit anyway?"):
-                self.abort_processing(); self.after(500, self.destroy)
+                # MODIFIED: Use the proper abort sequence
+                self.abort_processing()
+                # Give a moment for the abort to process before destroying the window
+                self.after(1000, self.destroy)
         else: self.destroy()
 
 if __name__ == "__main__":
