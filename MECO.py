@@ -55,7 +55,9 @@ failed_info = {
     "is_failed_state": False,
     "branch": None,
     "node_pattern": None,
-    "specific_node": None
+    "specific_node": None,
+    "is_timeout_state": False, # ADDED: To handle timeout state
+    "stage": None
 }
 
 # ADDED: To handle abort and continue
@@ -140,6 +142,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
                 try: os.remove(log_file_path)
                 except OSError: pass
             return "TIMEOUT", all_final_statuses, f"Timeout after {timeout_minutes}m."
+
 
         bob_info_cmd = ["bob", "info", "-r", run_area, "--branch", branch, "-o", log_file_path]
         try:
@@ -333,6 +336,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     start_stage_idx = stages_to_run.index(abort_resume_info["stage"])
                     status_updater(f"INFO: Resuming from aborted state at Branch: {current_iter_name}, Stage: {abort_resume_info['stage']}")
                     summary_updater(f"Branch '{current_iter_name}': Resuming at stage '{abort_resume_info['stage']}'")
+                    status_updater("INFO: Running 'bob start' before continuing...")
+                    run_bob_command(["bob", "start", "-r", eco_work_dir], work_dir=eco_work_dir, status_updater=status_updater)
                 except ValueError:
                     status_updater(f"WARN: Aborted stage '{abort_resume_info['stage']}' not found in current iteration. Starting from beginning.")
                 abort_resume_info["is_aborted_state"] = False
@@ -371,7 +376,7 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                 is_dsa_stage = (stage_type == 'sta' and dsa_enabled)
                 if is_dsa_stage:
                     key_pattern = "sta/sta.bb_summary"
-                    status_updater("INFO: DSA mode enabled. Key node for 'sta' set to 'sta/sta.bb_summary'")
+                    status_updater("INFO: DSA mode enabled. Key node for 'sta' set to 'sta.bb_summary'")
                 
                 summary_updater(f"Branch '{current_iter_name}': Running stage '{stage_type}'")
                 run_cmd = ["bob", "run", "-r", eco_work_dir, "--branch", current_iter_name, "--node", run_node_pattern]
@@ -381,6 +386,36 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
 
                 summary_updater(f"Branch '{current_iter_name}': Waiting for stage '{stage_type}'")
                 wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, run_node_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
+                
+                # --- FIX: New centralized timeout handling ---
+                if wait_status == "TIMEOUT":
+                    failed_info.update({"is_timeout_state": True, "branch": current_iter_name, "stage": stage_type})
+                    summary_updater(f"Branch '{current_iter_name}': TIMEOUT at stage '{stage_type}'. User action needed.")
+                    process_outcome = "TIMEOUT"
+                    
+                    run_bob_command(["bob", "stop", "-r", eco_work_dir], work_dir=eco_work_dir, status_updater=status_updater)
+                    
+                    completion_callback(process_outcome) # This will trigger email and popup from GUI thread
+                    
+                    continue_event.wait()
+                    continue_event.clear()
+                    
+                    if abort_flag.is_set():
+                        raise RuntimeError("Aborted")
+
+                    failed_info["is_timeout_state"] = False
+                    summary_updater(f"Branch '{current_iter_name}': Continue pressed, restarting stage: {stage_type}")
+                    
+                    status_updater(f"INFO: Running 'bob start' after timeout...")
+                    run_bob_command(["bob", "start", "-r", eco_work_dir], work_dir=eco_work_dir, status_updater=status_updater)
+
+                    status_updater(f"INFO: Re-running stage '{stage_type}' after timeout...")
+                    run_bob_command(run_cmd, work_dir=eco_work_dir, status_updater=status_updater) # Re-run the stage
+                    
+                    continue # Restart the while loop for the current stage_idx to re-check status
+
+                # --- END FIX ---
+                
                 if wait_status != "COMPLETED":
                     if wait_status == "ABORTED":
                          raise RuntimeError("Aborted")
@@ -392,8 +427,10 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     while True: # Key Node Failure Loop
                         failed_info.update({"is_failed_state": True, "branch": current_iter_name, "node_pattern": key_pattern, "specific_node": failed_key_node})
                         summary_updater(f"Branch '{current_iter_name}': FAILED at '{failed_key_node}'. User action needed.")
-                        process_outcome="FAILED"; completion_callback(process_outcome)
+                        process_outcome="FAILED"
                         status_updater(f"ERROR: Key node '{failed_key_node}' failed. User action required.")
+                        send_email("MECO Failed", f"MECO failed at branch {current_iter_name} stage {stage_type} node {failed_key_node}. Please update the block specific var file if required and press continue. Current Status: FAILED")
+                        completion_callback(process_outcome)
                         continue_event.wait(); continue_event.clear()
                         if abort_flag.is_set(): raise RuntimeError("Aborted")
 
@@ -527,15 +564,27 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
     finally:
         if process_outcome == "ABORTED":
             abort_resume_info["is_aborted_state"] = True
+            send_email("MECO Failed", f"MECO fails at branch: {abort_resume_info.get('branch', 'N/A')} and stage {abort_resume_info.get('stage', 'N/A')}. Please fix the issue, change the block specific var file if required and click on Continue")
             completion_callback(process_outcome)
-        elif not failed_info.get("is_failed_state", False):
+        elif not failed_info.get("is_failed_state", False) and not failed_info.get("is_timeout_state", False):
             completion_callback(process_outcome)
 
+
+def send_email(subject, body):
+    """Sends an email using the command line mail tool."""
+    try:
+        username_bytes = subprocess.check_output(['whoami'])
+        username = username_bytes.decode('utf-8').strip()
+        recipient = f"{username}@google.com"
+        command = f'echo "{body}" | mail -s "{subject}" {recipient}'
+        subprocess.run(command, shell=True, check=True)
+    except Exception as e:
+        print(f"Failed to send email: {e}")
 
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.09)") # Version updated
+        self.title("Multi-ECO Utility (v1.14)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
@@ -648,8 +697,9 @@ class EcoRunnerApp(tk.Tk):
         is_failed = (mode == 'failed')
         is_aborted = (mode == 'aborted')
         is_idle = (mode == 'idle')
+        is_timeout = (mode == 'timeout')
 
-        state_map = {'idle': tk.NORMAL, 'running': tk.DISABLED, 'failed': tk.DISABLED, 'aborted': tk.DISABLED}
+        state_map = {'idle': tk.NORMAL, 'running': tk.DISABLED, 'failed': tk.DISABLED, 'aborted': tk.DISABLED, 'timeout': tk.DISABLED}
         idle_state = state_map[mode]
 
         for widget in [self.start_button, self.clear_button, self.load_config_button, self.save_config_button,
@@ -659,10 +709,10 @@ class EcoRunnerApp(tk.Tk):
             widget.config(state=idle_state)
 
         self.tool_combo.config(state="readonly" if is_idle else tk.DISABLED)
-        self.block_specific_var_file_entry.config(state=tk.NORMAL if is_idle or is_failed else tk.DISABLED)
-        self.block_specific_var_file_browse.config(state=tk.NORMAL if is_idle or is_failed else tk.DISABLED)
+        self.block_specific_var_file_entry.config(state=tk.NORMAL if is_idle or is_failed or is_timeout else tk.DISABLED)
+        self.block_specific_var_file_browse.config(state=tk.NORMAL if is_idle or is_failed or is_timeout else tk.DISABLED)
         
-        self.continue_button.config(state=tk.NORMAL if is_failed or is_aborted else tk.DISABLED)
+        self.continue_button.config(state=tk.NORMAL if is_failed or is_aborted or is_timeout else tk.DISABLED)
         self.abort_button.config(state=tk.NORMAL if is_running else tk.DISABLED)
         self.start_button.config(state=tk.NORMAL if is_idle else tk.DISABLED)
 
@@ -681,6 +731,15 @@ class EcoRunnerApp(tk.Tk):
             self.summary_var.set(f"FAILED: Awaiting user action for node: {failed_info.get('specific_node','N/A')}")
             messagebox.showwarning("Failed", f"Run failed @ key node: {failed_info.get('specific_node','N/A')}\nFix issue (check log), optionally update var file, then click CONTINUE or ABORT.")
             self.set_controls_state('failed')
+        # --- FIX: New TIMEOUT case handled by the main GUI thread ---
+        elif outcome == "TIMEOUT":
+            branch = failed_info.get('branch', 'N/A')
+            stage = failed_info.get('stage', 'N/A')
+            self.summary_var.set(f"TIMEOUT: Awaiting user action for stage: {stage}")
+            send_email("MECO timed out", f"MECO timed out at branch {branch} stage {stage}. Either rerun with an increased limit or check for the issue, update the block specifc var is required and click on continue")
+            messagebox.showinfo("Timeout", f"MECO timed out at stage {stage}. Smells like a stale job?")
+            self.set_controls_state('timeout')
+        # --- END FIX ---
         elif outcome == "ABORTED":
             last_branch = abort_resume_info.get('branch', 'N/A')
             last_stage = abort_resume_info.get('stage', 'N/A')
@@ -695,9 +754,13 @@ class EcoRunnerApp(tk.Tk):
             abort_resume_info["is_aborted_state"] = False
 
     def continue_processing(self):
-        if failed_info.get("is_failed_state") or abort_resume_info.get("is_aborted_state"):
+        if abort_resume_info.get("is_aborted_state"):
+            self.summary_var.set("Attempting to resume from aborted state...")
+            self.start_processing(is_resume=True)
+        elif failed_info.get("is_failed_state") or failed_info.get("is_timeout_state"):
             self.set_controls_state('running')
             continue_event.set()
+
 
     def abort_processing(self):
         self.abort_button.config(state=tk.DISABLED)
@@ -743,15 +806,19 @@ class EcoRunnerApp(tk.Tk):
             finally:
                 self.set_controls_state('idle')
 
-    def start_processing(self):
+    def start_processing(self, is_resume=False):
         """Main entry point. Validates inputs, checks workspace, then starts setup or ECO run."""
         self.set_controls_state('running')
-        if self.log_toggle_var.get():
-            self.status_text.config(state=tk.NORMAL); self.status_text.delete('1.0', tk.END); self.status_text.config(state=tk.DISABLED)
         
-        abort_flag.clear(); continue_event.clear()
-        failed_info.update({'is_failed_state': False, 'branch': None, 'node_pattern': None, 'specific_node': None})
-        abort_resume_info.update({'is_aborted_state': False, 'branch': None, 'stage': None})
+        if not is_resume:
+            if self.log_toggle_var.get():
+                self.status_text.config(state=tk.NORMAL); self.status_text.delete('1.0', tk.END); self.status_text.config(state=tk.DISABLED)
+            abort_flag.clear(); continue_event.clear()
+            failed_info.update({'is_failed_state': False, 'branch': None, 'node_pattern': None, 'specific_node': None, 'is_timeout_state': False, 'stage': None})
+            abort_resume_info.update({'is_aborted_state': False, 'branch': None, 'stage': None})
+        else:
+             abort_flag.clear(); continue_event.clear()
+
 
         try:
             params = self._get_and_validate_params()
@@ -853,8 +920,6 @@ class EcoRunnerApp(tk.Tk):
             cmd = ["bob", "wa", "create", "--area", repo_area_abs, "--ip", ip, "--block", block, "--chip", chip, "--process", process]
             input_str = f"y\n{email}\ny\n"
             
-            # **FIXED**: Pass input_str directly as a string, don't encode it here.
-            # 'run_bob_command' uses subprocess.run with encoding='utf-8', which expects a string for input.
             wa_res = run_bob_command(cmd, input=input_str, status_updater=self.update_status_display, timeout_minutes=5)
 
             if not wa_res:
@@ -965,4 +1030,3 @@ if __name__ == "__main__":
     app = EcoRunnerApp()
     app.protocol("WM_DELETE_WINDOW", app.quit_app)
     app.mainloop()
-
