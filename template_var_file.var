@@ -31,10 +31,10 @@ bbset pex.MacroLefFiles		{}
 # Explicitly specify the UPF for each mode
 #user can optionally provide func, shift, capture Upf
 #by default, func and shift are taken
-#bbset mmmc.mode.func.StaUpf	{}
-#bbset mmmc.mode.shift.StaUpf	{}
-#bbset mmmc.mode.capture.StaUpf	{}
-#bbset mmmc.mode.StaUpf		{}
+bbset mmmc.mode.func.StaUpf	{}
+bbset mmmc.mode.shift.StaUpf	{}
+bbset mmmc.mode.capture.StaUpf	{}
+bbset mmmc.mode.StaUpf		{}
 
 ########## CONSTRAINTS ############
 #user has to set mmc mode list
@@ -55,6 +55,34 @@ bbset sta.config.ValidConstraintModeName	{}
 #user has to provide vdomains and rails
 #user has to provide scenarios and constraints
 
+bbset mmmc.mode.modes { }
+bbns mmmc {
+ bbns mode {
+        bbset modes " "    
+        bbns <> {
+            bbset pnrSdcs {}
+            bbset staSdc {}
+        }
+         } 
+ 
+bbns vdomain {
+        bbset vdomains ""
+        bbset gdomains ""
+        
+        
+        bbns < > {
+            bbset rail " "
+        }
+
+  }   
+  
+  bbns scenarios {
+        bbset constraints {
+           {apply "< >"      { } { }}
+           {create "*.*"}
+        }
+}
+}
 
 
 
@@ -68,11 +96,11 @@ bbset sta.config.ValidConstraintModeName	{}
 bbset sta.metrics.run_name           {my_run_dir}
 
 # Mail list
-#bbset sta.metrics.maillist           {}
+bbset sta.metrics.maillist           {}
 
 #user can optioanlly provide STA scenarios
 #one set is already included in the base var file
-#bbset sta.runs {}
+bbset sta.runs {}
 
 ################
 #### PCECO #####
@@ -80,10 +108,10 @@ bbset sta.metrics.run_name           {my_run_dir}
 
 #user can optionally provide scenarios for setup and hold fixing
 #one set of scenarios is already included in the base var file
-#bbns pceco {
-#    bbset SetupScenarios  {} -comment {Scenario list for setup fixing}
-#    bbset HoldScenarios   {} -comment {Scenario list for hold fixing}
-#}
+bbns pceco {
+    bbset SetupScenarios  {} -comment {Scenario list for setup fixing}
+    bbset HoldScenarios   {} -comment {Scenario list for hold fixing}
+}
 
 #user can optionally provide Dont touch Inst and size only cells
 bbconcat pceco.plugins.setup_dont_touch.DontTouchInst		{} 
@@ -105,9 +133,9 @@ bbset pceco.plugins.smsa_eco.DRCType {}
 bbset pnr.WatermarkRTLTag            {} 
 
 #user can optionally provide pnr scenarios and default status
-#bbset pnr.scenarios.Scenarios {}
-#bbset pnr.scenarios.status.Default   {}
-#
+bbset pnr.scenarios.Scenarios {}
+bbset pnr.scenarios.status.Default   {}
+
 
 #ADD this only if you see issue in applyeco stage with staple vias
 #bbappend pnr.fc.ECOSetupPreCallback {

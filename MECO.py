@@ -18,12 +18,12 @@ import json
 import fnmatch
 
 # --- Default Project/Flow Configuration --- #
-DEFAULT_SETUP_REPO_AREA = "MECO_REPO"
-DEFAULT_ECO_WORK_DIR_NAME = "Trial1_meco"
+DEFAULT_SETUP_REPO_AREA = "<abs path of REPO>"
+DEFAULT_ECO_WORK_DIR_NAME = "R1_meco"
 DEFAULT_CHIP_NAME = "lajolla"
 DEFAULT_PROCESS_NODE = "n2p"
 DEFAULT_IP_NAME = "hsio"
-DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 720
+DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 1080
 DEFAULT_BOB_CHECK_INTERVAL_SECONDS = 30
 # --- End Default Configuration --- #
 
@@ -385,7 +385,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     raise RuntimeError(f"'bob run' command failed for {run_node_pattern}")
 
                 summary_updater(f"Branch '{current_iter_name}': Waiting for stage '{stage_type}'")
-                wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, run_node_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
+                #wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, run_node_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
+                wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, key_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
                 
                 # --- FIX: New centralized timeout handling ---
                 if wait_status == "TIMEOUT":
@@ -584,7 +585,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.14)") # Version updated
+        self.title("Multi-ECO Utility (v1.15)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
