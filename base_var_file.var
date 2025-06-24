@@ -168,7 +168,7 @@ bbset pceco.plugins.switch_to_smsa.EnableExtractMargin {False}
 ################
 #### PNR #####
 ################
-
+bbset pnr.chipfinish.InlineExports   {oasis stage_netlist netlist namemap hcell_list upf macro_list def voltage_text_include_file scan_def flat_netlist lef} {Inline exports in chipfinish stage}
 bbset pnr.applyeco.EnableIncrementalRoute 1
 bbset pnr.applyeco.EnableIncrementalPlace 1
 bbset pnr.Stages {applyeco chipfinish}
