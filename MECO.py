@@ -251,6 +251,9 @@ bbset pex.source {{{os.path.join(pre_dir_context, 'pex')}}}
 bbset pex.TopDefFile {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.pex.def.gz')}}}
 bbset pnr.applyeco.InputDatabase {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.{op}')}}}
 bbset pnr.applyeco.ECOChangeFile {{{os.path.join(pre_dir_context, 'pceco/pceco/outs', f'eco.{t}.tcl')}}}
+bbset pteco.STA_RUN_DIR {{{os.path.join(pre_dir_context, 'sta')}}}
+bbset pteco.TOP_CELL_NAME { {block_name} }
+bbset pteco.ECO_DESIGN_LIST { {block_name} }
 # --- End Auto-gen settings ---\n"""
 
     except Exception as e:
