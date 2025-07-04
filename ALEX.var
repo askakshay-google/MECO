@@ -1,187 +1,3 @@
-##############
-#### PDP #####
-##############
-
-bbns .pdp {
-        bbset runpdp.jobs "ipmerge dummyfill designin"
-        bbns dummyfill {
-                bbset merge true
-                bbset feol true
-                bbset beol true
-                bbset turbo 8
-                bbset cores 8
-                bbset memory 128000
-        }
-}
-#bbset pdp.ipmerge.strict             {false}
-
-##############
-#### PEX #####
-##############
-
-#bbset pex.FillOasisFiles ""
-bbset pex.NumCores 8
-bbset pex.RAM 128000
-
-##############
-#### MMMC #####
-##############
-
-bbset mmmc.mode.StaUpf {}
-bbset mmmc.mode.shift.StaUpf {[bbget .mmmc.mode.StaUpf]}
-bbset mmmc.mode.func.StaUpf {[bbget .mmmc.mode.StaUpf]}
-
-##############
-#### STA #####
-##############
-
-bbset sta.config.constraint_drc.enable {False} 
-
-bbset sta.runs {func.ssgnp-SUD-0-cworst_ccworst_t func.ssgnp-UUD-0-cworst_ccworst_t func.ssgnp-NM-0-cworst_ccworst_t func.ssgnp-OD-0-cworst_ccworst_t shift.ssgnp-UUD-0-cworst_ccworst_t shift.ssgnp-NM-0-cworst_ccworst_t func.ssgnp-UUD-0-rcworst_ccworst func.ffgnp-OD-125-cworst_ccworst func.ffgnp-NM-m25-cbest_ccbest shift.ssgnp-UUD-0-rcworst_ccworst shift.ffgnp-OD-125-rcworst_ccworst}
-
-##### CONFIGS ######
-##:: MEMORY
-##:: SDF,TWEAKER,ETM,SDC,TWF,HS
-bbset sta.config.gen_sdf.enable {False}
-bbset sta.config.etm.enable {False}
-bbset sta.config.etm.UpfSupplyPrecedence {external}
-
-# Disabled reporting for better runtime
-# save SDC info for debug
-
-# Enable metrix generation and upload
-bbset sta.config.gen_report_metrics.enable {False}
-bbset sta.config.upload_metrics.enable {False}                                                           {#enable dashboard upload plugin}
-
-#bbset sta.config.generate_merge_dashboard_metrics.enable {True}                                                          {# No Comment}
-#bbset sta.config.generate_merge_dashboard_metrics.upload {True}                                                          {# No Comment}
-#bbset sta.config.gen_sta_dashboard.send_email {0}
-
-
-##### Continue on Error #####
-bbset sta.config.setup_sdc.ContinueOnError {True}
-bbset sta.config.link_design.ErrorOnBlackBoxes {False}                                                           {# error out if there is black-boxes}
-bbset sta.config.link_design.ErrorOnDesignMismatch {False}
-bbset sta.config.setup_sdc.SaveSourceFileInformation.enable {True}  ;# doesnt work in the latest session
-bbset sta.config.setup_sdc.SaveSourceFileInformation {True}
-bbset sta.config.ValidConstraintModeName    {[bbget .mmmc.mode.modes]}
-#####Enable for placement stage
-bbset sta.config.mtbf_checker.enable {True}                                                           {#Enable mtbf checker plugin}
-#bbset sta.config.setup_hypertrace.enable {False}
-### DvD settings for IR-STA
-
-
-#### GSPAN XV #####
-#bbset sta.config.constraint_drc.enable {True}
-#bbset sta.config.constraint_drc.Scenarios {*.*}
-bbset sta.config.pc_eco_session.enable   {True}
-####voltage mismatches in UUD/UD/SUD####
-bbset sta.config.addl_settings.app_vars {{si_xtalk_use_physical_exclusivity_on_ignore_arrival_nets True}
-                                      {timing_enable_clock_propagation_through_three_state_enable_pins true} {upf_use_driver_receiver_for_io_voltages true}}
-
-########### STA vars END###############
-
-
-################
-#### PCECO #####
-################
-
-bbns pceco {
-    bbset SetupScenarios  {func.ssgnp-SUD-0-cworst_ccworst_t func.ssgnp-UUD-0-cworst_ccworst_t func.ssgnp-NM-0-cworst_ccworst_t func.ssgnp-OD-0-cworst_ccworst_t shift.ssgnp-UUD-0-cworst_ccworst_t shift.ssgnp-NM-0-cworst_ccworst_t} -comment {Scenario list for setup fixing}
-    bbset HoldScenarios   {func.ssgnp-UUD-0-rcworst_ccworst func.ffgnp-OD-125-cworst_ccworst func.ffgnp-NM-m25-cbest_ccbest shift.ssgnp-UUD-0-rcworst_ccworst shift.ffgnp-OD-125-rcworst_ccworst} -comment {Scenario list for hold fixing}
-}
-
-bbns pceco {
-    bbns config {
-        bbset EcoSessionName {eco_session} -comment {ECO session name}
-        bbns block {
-            bbns begin {
-                bbset res    {CORES/1 RAM/25000}     -comment {Resource for setup node}
-                bbset enable {1}                     -comment {Enable setup node}
-            }
-            bbns config {
-                bbset res    {CORES/1 RAM/25000}     -comment {Resource for pceco config code}
-                bbset enable {1}                     -comment {Enable config node}
-                bbset PreFlow   {outs/pre_flow.sh}  -comment {Pre-flow shell script name}
-                bbset RunScript {outs/pceco.tcl}    -comment {PCECO run script name}
-                bbset PostFlow  {outs/post_flow.sh} -comment {Post-flow shell script name}
-            }
-            bbns scen {
-                bbset res    {CORES/1 RAM/25000}     -comment {Resource for pceco config code}
-                bbset enable {1}                     -comment {Enable scen node}
-            }
-            bbns pceco {
-                bbset res    {CORES/16 RAM/350000}   -comment {Resource for pceco main node}
-                bbset enable {1}                     -comment {Enable pceco node}
-                bbset EnableLogScreener {0}          -comment {Enable logscreener at the end of pceco node}
-            }
-        }
-    }
-}
-
-bbset pceco.TopCellName   {[bbget ".info.BLOCK"]}
-
-bbns pceco {
-    bbns plugins {
-        bbns write_eco_tcl {
-            bbset enable {true} -comment {enable/disable this plugin}
-            bbset ValidEcoTclFormat  {innovus icc2} -immutable -comment {List of valid formats in which ECO Tcl can be written. Type: list}
-            bbset EcoTclFormat       {innovus icc2} -comment {Target formats in which ECO Tcl is to be written. Type: list}
-            bbset EcoTclPrefix       {eco} -comment {Prefix name used in ECO tcl: outs/{top_block_name}.{prefix}.{format}.tcl}
-            bbset InvTclProc         {[bbget .info.PD_TOOLS_DIR]/eco/pceco/lib/tcl/invs_eco_proc/pc_invs_proc.tcl} -comment {Pre-defined proc for Invs ECO tcl}
-        }
-    }
-}
-
-
-bbns pceco {
-  bbns plugings {
-    bbns set_host_options {
-      bbset enable {true} -comment {enable/disable this plugin}
-      bbset WorkerSubmitCmd   {nc submit} -comment {Command to submit NC jobs for DMSA}
-      bbset WorkerResources   {[bbget "sta.config.block.bb_sta.res"]} -comment {NC resources used in worker submission. E.g. "CORES/32 RAM/50000 reservation:large"}
-      bbset MaxCoresPerWorker {32} -comment {The maximum number of CPU cores that can be used in current and remote processes}
-    }
-  }
-}
-
-
-bbns pceco {
-    bbns plugins {
-        bbset save_pre_eco_session.enable  {false} -comment {Saving of Pre-ECO  sessions}
-        bbset save_post_eco_session.enable {false} -comment {Saving of Post-ECO sessions}
-    }
-}
-
-# Disable DMSA whatif
-bbset pceco.plugins.whatif_dmsa.enable {True}
-
-bbset pceco.plugins.max_cap_eco.Methods {size_cell insert_buffer}
-bbset pceco.plugins.max_tran_eco.Methods {size_cell insert_buffer}
-bbset pceco.plugins.setup_eco.Methods {size_cell insert_buffer}
-#bbrecipe_apply extract_setup_margin
-bbset pceco.plugins.smsa_eco.EnableExtractMargin {True}
-bbset pceco.plugins.switch_to_smsa.EnableExtractMargin {False}
-
-
-
-################
-#### PNR #####
-################
-bbset pnr.chipfinish.InlineExports   {oasis stage_netlist netlist namemap hcell_list upf macro_list def voltage_text_include_file scan_def flat_netlist lef} {Inline exports in chipfinish stage}
-bbset pnr.applyeco.EnableIncrementalRoute 1
-bbset pnr.applyeco.EnableIncrementalPlace 1
-bbset pnr.Stages {applyeco chipfinish}
-
-bbset pnr.scenarios.Scenarios	{func.ssgnp-NM-0-cworst_ccworst_t shift.ssgnp-NM-0-cworst_ccworst_t}
-
-bbset pnr.scenarios.status.Default   {
-    {func_NM.ssgnp-NM-0-cworst_ccworst_t            {setup active max_trans max_cap min_cap}}
-    {shift_NM.ssgnp-NM-0-cworst_ccworst_t            {setup active max_trans max_cap min_cap}}
-}
-
-
-###ALEX flow
 ###########################
 #Base VAR settings
 ###########################
@@ -324,7 +140,21 @@ bbset FlowEnablePteco                 {1}                                       
 bbset pteco.UNFIXED_REPORT_SETUP     {1000000}                                                             {Num. unfixed endpoints to report for setup.}
 bbset pteco.UNFIXED_REPORT_HOLD      {1000000}                                                             {Num. unfixed endpoints to report for hold.}
 
+
+
+
+###################################
+bbset pteco.STA_RUN_DIR {/google/gchips/workspace/redondo-us/cbf/shared/cpu-hayden-1/prateekh/N2_Yuhina/ECO/alex/n2_vs_n3/N2P/fractional_cell_debug/all_runs/N2P_runs/REPO_mithun_n2p/run/power_sta/STA_REPO/run/sta_pe_low/main/sta}
+
+bbset pteco.TOP_CELL_NAME { hntelp_vec_wrapper }
+
+bbset pteco.ECO_DESIGN_LIST { hntelp_vec_wrapper }
+
+bbset pteco.SCENARIOS { func.ffgnp-USOD-125-cworst_ccworst func.tt-NMP-85-cworst_ccworst_t func.tt-USOD_TTCN-125-typical func.tt-XOD-125-typical }
+
 bbset pteco.LEAKAGE_POWER_SCENARIO { func.tt-NMP-85-cworst_ccworst_t }
 
 
 bbset pteco.ECO_ORDER_AND_METHODS { {ALEX: /google/gchips/tools/gchips_cpu_meth/prateekh/ALEX_leakage/ALEX_V10_LAJ_N2P_15/ALEX.tcl} }
+
+###################################

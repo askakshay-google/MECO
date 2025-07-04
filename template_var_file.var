@@ -149,3 +149,11 @@ bbset pnr.scenarios.status.Default   {}
 #    
 #    }
 #}
+#
+
+
+#### Leakage Recovery  ####
+#Change if you want
+#bbset pteco.LEAKAGE_POWER_SCENARIO { func.tt-NMP-85-cworst_ccworst_t }
+#bbset pteco.SCENARIOS {}
+
