@@ -33,6 +33,7 @@ KEY_NODES_PER_STAGE = {
     "pex": "pex/pex.starrc",
     "sta": "sta/sta.bb_sta.*",
     "pceco": "pceco/pceco",
+    "pteco": "pteco/pteco", # ADDED for leakage flow
     "pnr": "pnr/chipfinish",
     "applyeco": "pnr/chipfinish"
 }
@@ -47,6 +48,9 @@ DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max
 
 MAIN_ITER_STAGES = ["pdp", "pex", "sta", "pceco", "applyeco"]
 LAST_ITER_STAGES = ["pdp", "pex", "sta"]
+# ADDED: Leakage-specific stages
+LEAKAGE_ITER_STAGES = ["pdp", "pex", "sta", "pteco", "applyeco"]
+
 
 abort_flag = threading.Event()
 continue_event = threading.Event()
@@ -201,7 +205,7 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
 
 
 def create_final_var_file(eco_work_dir_abs, current_branch, prev_branch, block_specific_var_path,
-                           base_var_path, block_name, tool_name, status_updater=None):
+                           base_var_path, block_name, tool_name, status_updater=None, is_leakage_run=False):
     if status_updater:
         status_updater(f"DEBUG: --- Entering create_final_var_file for branch '{current_branch}' ---")
         status_updater(f"DEBUG: eco_work_dir_abs: {eco_work_dir_abs}")
@@ -241,6 +245,17 @@ def create_final_var_file(eco_work_dir_abs, current_branch, prev_branch, block_s
         chipfp_dir = os.path.join(chipfinish_source_dir, "pnr", "chipfinish")
         pre_dir_context = os.path.join(eco_work_dir_abs, current_branch)
 
+        # --- MODIFIED: Conditional bbset for applyeco ---
+        if is_leakage_run:
+            # For leakage, we use the pteco output
+            #eco_change_file_path = os.path.join(pre_dir_context, 'pteco', 'eco.primetime', 'changelist_pteco', f'eco_output.post_Hold_revert_final.{t_name1}.tcl')
+            eco_change_file_path = os.path.join(pre_dir_context, 'pteco', 'eco.primetime', 'changelist_pteco', f'eco_output.{t_name1}.tcl')
+            apply_eco_bbset = f"bbset pnr.applyeco.ECOChangeFile {{{eco_change_file_path}}}"
+        else:
+            # For regular runs, use the pceco output
+            apply_eco_bbset = f"bbset pnr.applyeco.ECOChangeFile {{{os.path.join(pre_dir_context, 'pceco/pceco/outs', f'eco.{t}.tcl')}}}"
+        # --- END MODIFICATION ---
+
         bbsets = f"""\n# --- Auto-gen settings by ECO script for branch: {current_branch} ---
 bbset hierarchy.{block_name}.chipfinish.source {{{chipfinish_source_dir}}}
 bbset pnr.Tool {t_name}
@@ -250,10 +265,10 @@ bbset pex.FillOasisFiles {{{os.path.join(pre_dir_context, 'pdp/dummyfill/outs', 
 bbset pex.source {{{os.path.join(pre_dir_context, 'pex')}}}
 bbset pex.TopDefFile {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.pex.def.gz')}}}
 bbset pnr.applyeco.InputDatabase {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.{op}')}}}
-bbset pnr.applyeco.ECOChangeFile {{{os.path.join(pre_dir_context, 'pceco/pceco/outs', f'eco.{t}.tcl')}}}
+{apply_eco_bbset}
 bbset pteco.STA_RUN_DIR {{{os.path.join(pre_dir_context, 'sta')}}}
-bbset pteco.TOP_CELL_NAME { {block_name} }
-bbset pteco.ECO_DESIGN_LIST { {block_name} }
+bbset pteco.TOP_CELL_NAME {{ {block_name} }}
+bbset pteco.ECO_DESIGN_LIST {{ {block_name} }}
 # --- End Auto-gen settings ---\n"""
 
     except Exception as e:
@@ -294,14 +309,19 @@ bbset pteco.ECO_DESIGN_LIST { {block_name} }
 def _add_analysis_bbsets_to_var_file(final_var_file_path, current_iter_name,
                                      analysis_sequences_name, status_updater=None):
     specific_iteration_bbsets = ""
-    if current_iter_name != "Last_iter":
+    # --- MODIFIED: Handle leakage ---
+    analysis_index = 0 if current_iter_name == "main" else int(current_iter_name.split('_')[1])
+    current_analysis_sequence = analysis_sequences_name[analysis_index].strip('{}').strip()
+    is_leakage_run = (current_analysis_sequence == "leakage")
+    
+    if not is_leakage_run and current_iter_name != "Last_iter":
         try:
-            analysis_index = 0 if current_iter_name == "main" else int(current_iter_name.split('_')[1])
             if 0 <= analysis_index < len(analysis_sequences_name):
                 specific_iteration_bbsets = f"\nbbset pceco.EcoOrder {{SMSA1}}\nbbset pceco.SMSA1 {analysis_sequences_name[analysis_index]}\n"
         except (ValueError, IndexError):
             if status_updater: status_updater(f"WARN: Could not determine analysis sequence for iteration '{current_iter_name}'.")
             pass
+    # --- END MODIFICATION ---
 
     if specific_iteration_bbsets:
         try:
@@ -331,7 +351,18 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
         while iter_idx < len(all_iterations):
             current_iter_name = all_iterations[iter_idx]
             current_branch_for_error = current_iter_name
-            stages_to_run = MAIN_ITER_STAGES if current_iter_name != "Last_iter" else LAST_ITER_STAGES
+
+            # --- MODIFIED: Dynamic stage selection ---
+            analysis_index = 0 if current_iter_name == "main" else int(current_iter_name.split('_')[1])
+            current_analysis_sequence = analysis_sequences_name[analysis_index].strip('{}').strip()
+            is_leakage_run = (current_analysis_sequence == "leakage")
+
+            if is_leakage_run:
+                stages_to_run = LEAKAGE_ITER_STAGES
+                status_updater(f"INFO: Leakage iteration detected for '{current_iter_name}'. Using stages: {stages_to_run}")
+            else:
+                stages_to_run = MAIN_ITER_STAGES if current_iter_name != "Last_iter" else LAST_ITER_STAGES
+            # --- END MODIFICATION ---
 
             start_stage_idx = 0
             if abort_resume_info["is_aborted_state"] and abort_resume_info["branch"] == current_iter_name:
@@ -350,7 +381,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                 if abort_flag.is_set(): raise RuntimeError("Aborted")
 
                 current_stage_for_error = f"prepare_var_{current_iter_name}"
-                final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater)
+                # MODIFIED: Pass is_leakage_run flag
+                final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater, is_leakage_run=is_leakage_run)
                 if not final_var_file or not _add_analysis_bbsets_to_var_file(final_var_file, current_iter_name, analysis_sequences_name, status_updater):
                     raise RuntimeError(f"FAIL: Prepare var file for '{current_iter_name}'. See log for details (e.g., missing 'chipfinish.source' in block specific var file).")
 
@@ -388,10 +420,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     raise RuntimeError(f"'bob run' command failed for {run_node_pattern}")
 
                 summary_updater(f"Branch '{current_iter_name}': Waiting for stage '{stage_type}'")
-                #wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, run_node_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
                 wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, key_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
                 
-                # --- FIX: New centralized timeout handling ---
                 if wait_status == "TIMEOUT":
                     failed_info.update({"is_timeout_state": True, "branch": current_iter_name, "stage": stage_type})
                     summary_updater(f"Branch '{current_iter_name}': TIMEOUT at stage '{stage_type}'. User action needed.")
@@ -399,7 +429,7 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     
                     run_bob_command(["bob", "stop", "-r", eco_work_dir], work_dir=eco_work_dir, status_updater=status_updater)
                     
-                    completion_callback(process_outcome) # This will trigger email and popup from GUI thread
+                    completion_callback(process_outcome) 
                     
                     continue_event.wait()
                     continue_event.clear()
@@ -414,11 +444,10 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                     run_bob_command(["bob", "start", "-r", eco_work_dir], work_dir=eco_work_dir, status_updater=status_updater)
 
                     status_updater(f"INFO: Re-running stage '{stage_type}' after timeout...")
-                    run_bob_command(run_cmd, work_dir=eco_work_dir, status_updater=status_updater) # Re-run the stage
+                    run_bob_command(run_cmd, work_dir=eco_work_dir, status_updater=status_updater) 
                     
-                    continue # Restart the while loop for the current stage_idx to re-check status
+                    continue 
 
-                # --- END FIX ---
                 
                 if wait_status != "COMPLETED":
                     if wait_status == "ABORTED":
@@ -433,7 +462,7 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                         summary_updater(f"Branch '{current_iter_name}': FAILED at '{failed_key_node}'. User action needed.")
                         process_outcome="FAILED"
                         status_updater(f"ERROR: Key node '{failed_key_node}' failed. User action required.")
-                        send_email("MECO Failed", f"MECO failed at branch {current_iter_name} stage {stage_type} node {failed_key_node}. Please update the block specific var file if required and press continue. Current Status: FAILED")
+                        send_email("MECO Failed", f"MECO failed at branch {current_iter_name} stage {stage_type} node {failed_key_node}. Please update the block specific var file if required , save under a different filename, and reupload the same and press continue. Current Status: FAILED")
                         completion_callback(process_outcome)
                         continue_event.wait(); continue_event.clear()
                         if abort_flag.is_set(): raise RuntimeError("Aborted")
@@ -443,7 +472,7 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                             status_updater("INFO: New block-specific var file detected. Re-creating final var file...")
                             summary_updater(f"Branch '{current_iter_name}': Updating var file...")
                             block_specific_var_path_for_run = new_block_specific_path
-                            new_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater)
+                            new_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater, is_leakage_run=is_leakage_run)
                             if not new_var_file or not _add_analysis_bbsets_to_var_file(new_var_file, current_iter_name, analysis_sequences_name, status_updater):
                                 status_updater("ERROR: Failed to recreate var file. Please try again."); summary_updater("Error creating var file."); continue
 
@@ -534,16 +563,18 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                         except Exception as e:
                             raise RuntimeError(f"Failed to append DSA scenarios to var files: {e}")
 
-                        bob_update_force_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-d", "pceco", "--force", "--branch", current_iter_name]
-                        bob_update_add_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-a", "pceco", "--force", "--branch", current_iter_name]
-                        
-                        update_force_res = run_bob_command(bob_update_force_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater)
-                        if not update_force_res or update_force_res.returncode != 0:
-                            raise RuntimeError("bob update --force command failed.")
-                        
-                        update_add_res = run_bob_command(bob_update_add_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater)
-                        if not update_add_res or update_add_res.returncode != 0:
-                            raise RuntimeError("bob update -a command failed.")
+                        # MODIFIED: Only run bob update if not a leakage run
+                        if not is_leakage_run:
+                            bob_update_force_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-d", "pceco", "--force", "--branch", current_iter_name]
+                            bob_update_add_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-a", "pceco", "--force", "--branch", current_iter_name]
+                            
+                            update_force_res = run_bob_command(bob_update_force_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater)
+                            if not update_force_res or update_force_res.returncode != 0:
+                                raise RuntimeError("bob update --force command failed.")
+                            
+                            update_add_res = run_bob_command(bob_update_add_cmd, work_dir=eco_work_dir, status_updater=status_updater, summary_updater=summary_updater)
+                            if not update_add_res or update_add_res.returncode != 0:
+                                raise RuntimeError("bob update -a command failed.")
 
                     for name, status in all_statuses.items():
                         if status != "VALID" and not (key_pattern and fnmatch.fnmatch(name, key_pattern)):
@@ -588,7 +619,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.15)") # Version updated
+        self.title("Multi-ECO Utility (v1.16)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
@@ -735,15 +766,13 @@ class EcoRunnerApp(tk.Tk):
             self.summary_var.set(f"FAILED: Awaiting user action for node: {failed_info.get('specific_node','N/A')}")
             messagebox.showwarning("Failed", f"Run failed @ key node: {failed_info.get('specific_node','N/A')}\nFix issue (check log), optionally update var file, then click CONTINUE or ABORT.")
             self.set_controls_state('failed')
-        # --- FIX: New TIMEOUT case handled by the main GUI thread ---
         elif outcome == "TIMEOUT":
             branch = failed_info.get('branch', 'N/A')
             stage = failed_info.get('stage', 'N/A')
             self.summary_var.set(f"TIMEOUT: Awaiting user action for stage: {stage}")
-            send_email("MECO timed out", f"MECO timed out at branch {branch} stage {stage}. Either rerun with an increased limit or check for the issue, update the block specifc var is required and click on continue")
+            send_email("MECO timed out", f"MECO timed out at branch {branch} stage {stage}. Either rerun with an increased limit or check for the issue, update the block specifc var if required and click on continue")
             messagebox.showinfo("Timeout", f"MECO timed out at stage {stage}. Smells like a stale job?")
             self.set_controls_state('timeout')
-        # --- END FIX ---
         elif outcome == "ABORTED":
             last_branch = abort_resume_info.get('branch', 'N/A')
             last_stage = abort_resume_info.get('stage', 'N/A')
@@ -980,8 +1009,20 @@ class EcoRunnerApp(tk.Tk):
         self.summary_var.set(message)
 
     def parse_analysis_input(self, text):
-        groups = re.findall(r'{[^}]+}', text.strip() or DEFAULT_ANALYSIS_INPUT)
+        raw_text = text.strip() or DEFAULT_ANALYSIS_INPUT
+        groups = re.findall(r'{[^}]+}', raw_text)
+
+        # --- MODIFIED: Validate leakage ---
+        for group in groups:
+            content = group.strip('{}').strip()
+            words = content.split()
+            if "leakage" in words and len(words) > 1:
+                messagebox.showerror("Invalid Analysis Input", "Leakage cannot be clubbed with other stages. Please put {leakage} in its own iteration.")
+                raise ValueError("Invalid leakage configuration")
+        # --- END MODIFICATION ---
+        
         return len(groups), groups
+
 
     def save_configuration(self):
         cfg = { "repo_area": self.repo_area_var.get(), "eco_work_dir_name": self.eco_work_dir_name_var.get(),

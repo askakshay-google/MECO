@@ -162,3 +162,6 @@ bbset eco.DontUseCells               {restrict(AllElvtCells) restrict(AllFractio
 
 bbset sta.config.setup_upf.ContinueOnSupplyNetNotFound {True}  
 bbset sta.config.hierarchy_info.ErrorOutIfExistsDefaultCollection {False} 
+
+
+bbset pteco.SCENARIOS {func.tt-NMP-85-cworst_ccworst_t capture.ssgnp-NM-0-cworst_ccworst_t func.ssgnp-NM-0-cworst_ccworst_t  shift.ssgnp-NM-0-cworst_ccworst_t capture.ffgnp-NM-125-cbest_ccbest  shift.ffgnp-NM-125-cworst_ccworst} 
