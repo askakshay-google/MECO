@@ -208,7 +208,7 @@ def create_final_var_file(eco_work_dir_abs, current_branch, prev_branch, block_s
         status_updater(f"DEBUG: base_var_path: {base_var_path}")
         status_updater(f"DEBUG: block_specific_var_path: {block_specific_var_path}")
 
-    op, t, t_name, rec = ("ndm", "icc2", "fc", "bbrecipe_apply setup_fc") if tool_name == "FC" else (("enc.dat", "invs", "innovus", "#Invs flow") if tool_name == "Innovus" else (None, None, None, None))
+    op, t, t_name,t_name1, rec = ("ndm", "icc2", "fc", "icc", "bbrecipe_apply setup_fc") if tool_name == "FC" else (("enc.dat", "invs", "innovus", "innovus" , "#Invs flow") if tool_name == "Innovus" else (None, None, None, None, None))
     if not op:
         if status_updater: status_updater(f"ERROR: Invalid TOOL: {tool_name}")
         return None
