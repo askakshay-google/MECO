@@ -100,6 +100,10 @@ bbset sta.metrics.maillist           {}
 
 #user can optioanlly provide STA scenarios
 #one set is already included in the base var file
+
+######       VERY IMPORTANT    #########
+#If you enable leakage, make sure you run STA for leakage corner
+
 bbset sta.runs {}
 
 ################
@@ -108,6 +112,11 @@ bbset sta.runs {}
 
 #user can optionally provide scenarios for setup and hold fixing
 #one set of scenarios is already included in the base var file
+######       VERY IMPORTANT    #########
+#If you are enabling DSA, make sure you include the following
+#For Setup : per OPP , ss_0c_cworst_ccworst_t
+#For Hold  : high OPP OD -> ff_OD_125c_rcworst
+#			 low OPP UUD -> ff_UUD_0c_cworst_ccworst
 bbns pceco {
     bbset SetupScenarios  {} -comment {Scenario list for setup fixing}
     bbset HoldScenarios   {} -comment {Scenario list for hold fixing}

@@ -33,7 +33,7 @@ KEY_NODES_PER_STAGE = {
     "pex": "pex/pex.starrc",
     "sta": "sta/sta.bb_sta.*",
     "pceco": "pceco/pceco",
-    "pteco": "pteco/pteco", # ADDED for leakage flow
+    "pteco": "pteco/eco.primetime", # ADDED for leakage flow
     "pnr": "pnr/chipfinish",
     "applyeco": "pnr/chipfinish"
 }
@@ -43,7 +43,7 @@ DSA_SCRIPT_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/kvikass/script
 
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
 
-DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max_cap_eco setup_eco hold_eco} {setup_eco hold_eco} {setup_eco hold_eco max_tran_eco}"
+DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max_cap_eco setup_eco hold_eco} {leakage} {setup_eco hold_eco}  {setup_eco hold_eco max_tran_eco}"
 
 
 MAIN_ITER_STAGES = ["pdp", "pex", "sta", "pceco", "applyeco"]
@@ -524,7 +524,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                         if not dsa_res or dsa_res.returncode != 0:
                             raise RuntimeError("DSA script execution failed.")
                         
-                        grep_cmd = f"grep '^.*[a-z]' {dsa_output_file}/* | grep % | grep -v scenario | awk -F '[|%]' '$3 > 70' | column -t | awk '{{print $2}}' | sort -uk 1 > {scenarios_file}"
+                        #grep_cmd = f"grep '^.*[a-z]' {dsa_output_file}/* | grep % | grep -v scenario | awk -F '[|%]' '$3 > 70' | column -t | awk '{{print $2}}' | sort -uk 1 > {scenarios_file}"
+                        grep_cmd = f"grep '^.*[a-z]' {dsa_output_file}/* | grep % | grep -v scenario | sed 's/%//g' | awk '$8 < 90'  | column -t | awk '{{print $2}}' | sort -uk 1 > {scenarios_file}"
                         status_updater(f"INFO: Running scenario generation command: {grep_cmd}")
                         try:
                            subprocess.run(grep_cmd, shell=True, check=True, cwd=iter_area, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -619,7 +620,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.16)") # Version updated
+        self.title("Multi-ECO Utility (v1.17)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
