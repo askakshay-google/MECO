@@ -328,3 +328,6 @@ bbset pteco.LEAKAGE_POWER_SCENARIO { func.tt-NMP-85-cworst_ccworst_t }
 
 
 bbset pteco.ECO_ORDER_AND_METHODS { {ALEX: /google/gchips/tools/gchips_cpu_meth/prateekh/ALEX_leakage/ALEX_V10_LAJ_N2P_15/ALEX.tcl} }
+
+
+####################### END OF BASE VAR ###########################################
