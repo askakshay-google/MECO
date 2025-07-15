@@ -23,7 +23,7 @@ DEFAULT_ECO_WORK_DIR_NAME = "R1_meco"
 DEFAULT_CHIP_NAME = "lajolla"
 DEFAULT_PROCESS_NODE = "n2p"
 DEFAULT_IP_NAME = "hsio"
-DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 1080
+DEFAULT_BOB_RUN_TIMEOUT_MINUTES = 1500
 DEFAULT_BOB_CHECK_INTERVAL_SECONDS = 30
 # --- End Default Configuration --- #
 
@@ -39,7 +39,7 @@ KEY_NODES_PER_STAGE = {
 }
 
 # ADDED: DSA script path
-DSA_SCRIPT_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/kvikass/scripts/dsa.py"
+DSA_SCRIPT_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/MECO/dsa.py"
 
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
 
@@ -151,13 +151,16 @@ def wait_for_bob_run(run_area, branch, node_pattern, timeout_minutes, check_inte
         bob_info_cmd = ["bob", "info", "-r", run_area, "--branch", branch, "-o", log_file_path]
         try:
             if os.path.exists(log_file_path): os.remove(log_file_path)
-            result = subprocess.run(bob_info_cmd, check=False, shell=False, timeout=120, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8', errors='ignore', cwd=run_area)
+            result = run_bob_command(bob_info_cmd, work_dir=run_area, status_updater=status_updater, timeout_minutes=2)
+            if not result:
+                if status_updater: status_updater(f"ERROR: {log_prefix}: 'bob info' command failed to execute.")
+                return "COMMAND_FAILED", {}, "'bob info' command failed to execute."
             if result.returncode != 0:
                 if status_updater: status_updater(f"WARN: {log_prefix}: 'bob info' failed. Retrying... Stderr: {result.stderr.strip()}")
                 time.sleep(check_interval_seconds); continue
         except Exception as e:
             if status_updater: status_updater(f"ERROR: 'bob info' command failed: {e}")
-            return "ERROR", {}, f"'bob info' command failed: {e}"
+            return "COMMAND_FAILED", {}, f"'bob info' command failed: {e}"
 
         try:
             with open(log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -380,11 +383,16 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                 status_updater(f"\n{'='*20} Prep Branch: '{current_iter_name}' {'='*20}")
                 if abort_flag.is_set(): raise RuntimeError("Aborted")
 
+                #B004, reported by Sunil on last iteration split on integar
                 current_stage_for_error = f"prepare_var_{current_iter_name}"
                 # MODIFIED: Pass is_leakage_run flag
                 final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater, is_leakage_run=is_leakage_run)
-                if not final_var_file or not _add_analysis_bbsets_to_var_file(final_var_file, current_iter_name, analysis_sequences_name, status_updater):
-                    raise RuntimeError(f"FAIL: Prepare var file for '{current_iter_name}'. See log for details (e.g., missing 'chipfinish.source' in block specific var file).")
+                #final_var_file = create_final_var_file(eco_work_dir, current_iter_name, prev_iter, block_specific_var_path_for_run, base_var_file_path, block_name, tool_name, status_updater)
+                if not final_var_file:
+                    raise RuntimeError(f"FAIL: Prepare var file for '{current_iter_name}' See log for details (e.g., missing 'chipfinish.source' in block specific var file).")
+                if current_iter_name != "Last_iter":
+                    if not _add_analysis_bbsets_to_var_file(final_var_file, current_iter_name, analysis_sequences_name, status_updater):
+                        raise RuntimeError(f"FAIL: Could not add analysis bbsets for '{current_iter_name}'.")
 
                 current_stage_for_error = f"create_{current_iter_name}"
                 create_cmd = ["bob", "create", "-r", eco_work_dir, "-v", final_var_file, "-s"] + stages_to_run
@@ -422,6 +430,20 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                 summary_updater(f"Branch '{current_iter_name}': Waiting for stage '{stage_type}'")
                 wait_status, all_statuses, wait_msg = wait_for_bob_run(eco_work_dir, current_iter_name, key_pattern, timeout_minutes, check_interval, status_updater, summary_updater)
                 
+                if wait_status == "COMMAND_FAILED":
+                    failed_info.update({"is_failed_state": True, "branch": current_iter_name, "node_pattern": "bob info", "specific_node": "bob info"})
+                    summary_updater(f"Branch '{current_iter_name}': FAILED at 'bob info'. User action needed.")
+                    process_outcome = "FAILED"
+                    status_updater("ERROR: 'bob info' command failed. User action required.")
+                    completion_callback(process_outcome)
+                    continue_event.wait()
+                    continue_event.clear()
+                    if abort_flag.is_set():
+                        raise RuntimeError("Aborted")
+                    failed_info["is_failed_state"] = False
+                    summary_updater(f"Branch '{current_iter_name}': Continue pressed, retrying stage: {stage_type}")
+                    continue
+
                 if wait_status == "TIMEOUT":
                     failed_info.update({"is_timeout_state": True, "branch": current_iter_name, "stage": stage_type})
                     summary_updater(f"Branch '{current_iter_name}': TIMEOUT at stage '{stage_type}'. User action needed.")
@@ -620,7 +642,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.17)") # Version updated
+        self.title("Multi-ECO Utility (v1.18)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
@@ -922,7 +944,7 @@ class EcoRunnerApp(tk.Tk):
         eco_run_dir_abs = os.path.join(repo_area_abs, "run", params["eco_work_dir_name"])
         
         return (
-            os.path.join(get_script_directory(), DEFAULT_BASE_VAR_FILE_NAME),
+            "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/MECO/base_var_file.var",
             params["block"], params["tool"], params["analysis_sequences"], params["num_iterations"],
             eco_run_dir_abs, params["timeout_minutes"], params["check_interval"], params["dsa_enabled"],
             self.update_status_display, self.update_summary_display, self.processing_complete,
