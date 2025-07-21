@@ -512,6 +512,33 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                                             status_updater(f"  - Updated: {flow_var_path}")
                                         except Exception as e: status_updater(f"ERROR: Failed updating {flow_var_path}: {e}")
 
+                            status_updater("INFO: Updating flow.var for pending nodes...")
+                            for s_idx in range(stage_idx, len(stages_to_run)):
+                                pending_stage = stages_to_run[s_idx]
+                                
+                                # Correctly handle 'applyeco' by pointing to the 'pnr' directory
+                                if pending_stage == "applyeco":
+                                    pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, "pnr")
+                                else:
+                                    pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, pending_stage)
+                            
+                                if not os.path.isdir(pending_stage_dir): continue
+                            
+                                # Iterate through all subdirectories (applyeco, chipfinish, etc.)
+                                for subdir in os.listdir(pending_stage_dir):
+                                    node_dir_path = os.path.join(pending_stage_dir, subdir)
+                                    if not os.path.isdir(node_dir_path): continue
+                            
+                                    flow_var_path = os.path.join(node_dir_path, "vars", "flow.var")
+                                    if os.path.isfile(flow_var_path):
+                                        try:
+                                            old_var_path = os.path.join(node_dir_path, "vars", "flow.var_old")
+                                            shutil.move(flow_var_path, old_var_path)
+                                            shutil.copy(new_var_file, flow_var_path)
+                                            status_updater(f"  - Updated: {flow_var_path}")
+                                        except Exception as e:
+                                            status_updater(f"ERROR: Failed updating {flow_var_path}: {e}")
+
                         failed_info["is_failed_state"] = False
                         key_node_for_stage = KEY_NODES_PER_STAGE.get(stage_type)
                         summary_updater(f"Branch '{current_iter_name}': Continue pressed, re-running node: {key_node_for_stage}")
@@ -642,7 +669,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.18)") # Version updated
+        self.title("Multi-ECO Utility (v1.19)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
