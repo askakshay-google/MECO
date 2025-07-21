@@ -498,19 +498,6 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                             if not new_var_file or not _add_analysis_bbsets_to_var_file(new_var_file, current_iter_name, analysis_sequences_name, status_updater):
                                 status_updater("ERROR: Failed to recreate var file. Please try again."); summary_updater("Error creating var file."); continue
 
-                            status_updater("INFO: Updating flow.var for pending nodes...")
-                            for s_idx in range(stage_idx, len(stages_to_run)):
-                                pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, stages_to_run[s_idx])
-                                if not os.path.isdir(pending_stage_dir): continue
-                                for node_dir in os.listdir(pending_stage_dir):
-                                    flow_var_path = os.path.join(pending_stage_dir, node_dir, "vars", "flow.var")
-                                    if os.path.isfile(flow_var_path):
-                                        try:
-                                            old_var_path = os.path.join(pending_stage_dir, node_dir, "vars", "flow.var_old")
-                                            shutil.move(flow_var_path, old_var_path)
-                                            shutil.copy(new_var_file, flow_var_path)
-                                            status_updater(f"  - Updated: {flow_var_path}")
-                                        except Exception as e: status_updater(f"ERROR: Failed updating {flow_var_path}: {e}")
 
                             status_updater("INFO: Updating flow.var for pending nodes...")
                             for s_idx in range(stage_idx, len(stages_to_run)):
