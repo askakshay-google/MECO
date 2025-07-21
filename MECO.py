@@ -499,19 +499,53 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                                 status_updater("ERROR: Failed to recreate var file. Please try again."); summary_updater("Error creating var file."); continue
 
 
-                            status_updater("INFO: Updating flow.var for pending nodes...")
+
+             
+
+                            status_updater("INFO: Updating flow for pending nodes...")
+                            
+                            # Stages to be updated using the 'bob update' command
+                            bob_update_stages = {"sta", "pceco", "pteco"}
+                            
+                            # First, handle the special stages with 'bob update'
+                            for stage_to_update in bob_update_stages:
+                                # Check if this stage is actually in the list of remaining stages to be run
+                                if stage_to_update in stages_to_run[stage_idx:]:
+                                    status_updater(f"INFO: Updating flow for stage '{stage_to_update}' using 'bob update'.")
+                                    
+                                    # Command to delete the old stage definition
+                                    bob_update_force_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-d", stage_to_update, "--force", "--branch", current_iter_name]
+                                    update_force_res = run_bob_command(bob_update_force_cmd, work_dir=eco_work_dir, status_updater=status_updater)
+                                    if not update_force_res or update_force_res.returncode != 0:
+                                        status_updater(f"ERROR: 'bob update --force' command failed for stage {stage_to_update}.")
+                                        # Continue to the add command anyway, as it might fix the issue
+                                        
+                                    # Command to add the stage back with the new variables
+                                    bob_update_add_cmd = ["bob", "update", "flow", "-r", eco_work_dir, "-a", stage_to_update, "--force", "--branch", current_iter_name]
+                                    update_add_res = run_bob_command(bob_update_add_cmd, work_dir=eco_work_dir, status_updater=status_updater)
+                                    if not update_add_res or update_add_res.returncode != 0:
+                                        status_updater(f"ERROR: 'bob update -a' command failed for stage {stage_to_update}.")
+                            
+                            # Then, iterate through all pending stages and handle the rest by updating flow.var
+                            status_updater("INFO: Updating flow.var for other pending nodes...")
                             for s_idx in range(stage_idx, len(stages_to_run)):
                                 pending_stage = stages_to_run[s_idx]
                                 
+                                # Skip the stages already handled by 'bob update'
+                                if pending_stage in bob_update_stages:
+                                    continue
+                            
+                                status_updater(f"INFO: Updating vars for stage '{pending_stage}' by replacing flow.var.")
+                                
                                 # Correctly handle 'applyeco' by pointing to the 'pnr' directory
-                                if pending_stage == "applyeco":
-                                    pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, "pnr")
-                                else:
-                                    pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, pending_stage)
+                                stage_dir_name = "pnr" if pending_stage == "applyeco" else pending_stage
+                                pending_stage_dir = os.path.join(eco_work_dir, current_iter_name, stage_dir_name)
                             
-                                if not os.path.isdir(pending_stage_dir): continue
+                                if not os.path.isdir(pending_stage_dir):
+                                    status_updater(f"WARN: Directory for stage '{pending_stage}' not found at {pending_stage_dir}, cannot update vars.")
+                                    continue
                             
-                                # Iterate through all subdirectories (applyeco, chipfinish, etc.)
+                                # Iterate through all subdirectories (e.g., dummyfill, pex.starrc) within the stage directory
                                 for subdir in os.listdir(pending_stage_dir):
                                     node_dir_path = os.path.join(pending_stage_dir, subdir)
                                     if not os.path.isdir(node_dir_path): continue
@@ -519,12 +553,19 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
                                     flow_var_path = os.path.join(node_dir_path, "vars", "flow.var")
                                     if os.path.isfile(flow_var_path):
                                         try:
-                                            old_var_path = os.path.join(node_dir_path, "vars", "flow.var_old")
+                                            # Create a backup of the old var file
+                                            old_var_path = os.path.join(node_dir_path, "vars", "flow.var.old")
                                             shutil.move(flow_var_path, old_var_path)
+                                            # Copy the new var file into place
                                             shutil.copy(new_var_file, flow_var_path)
                                             status_updater(f"  - Updated: {flow_var_path}")
                                         except Exception as e:
                                             status_updater(f"ERROR: Failed updating {flow_var_path}: {e}")
+                            
+
+
+
+
 
                         failed_info["is_failed_state"] = False
                         key_node_for_stage = KEY_NODES_PER_STAGE.get(stage_type)
