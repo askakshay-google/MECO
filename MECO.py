@@ -43,7 +43,7 @@ DSA_SCRIPT_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/MECO
 
 DEFAULT_BASE_VAR_FILE_NAME = "base_var_file.var" # This file should exist in the script's directory
 
-DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {max_tran_eco max_cap_eco setup_eco hold_eco} {leakage} {setup_eco hold_eco}  {setup_eco hold_eco max_tran_eco}"
+DEFAULT_ANALYSIS_INPUT = "{max_tran_eco max_cap_eco setup_eco} {{max_tran_eco max_cap_eco} {setup_eco hold_eco}} {setup_eco hold_eco}  {setup_eco hold_eco max_tran_eco}"
 
 
 MAIN_ITER_STAGES = ["pdp", "pex", "sta", "pceco", "applyeco"]
@@ -312,19 +312,32 @@ bbset pteco.ECO_DESIGN_LIST {{ {block_name} }}
 def _add_analysis_bbsets_to_var_file(final_var_file_path, current_iter_name,
                                      analysis_sequences_name, status_updater=None):
     specific_iteration_bbsets = ""
-    # --- MODIFIED: Handle leakage ---
     analysis_index = 0 if current_iter_name == "main" else int(current_iter_name.split('_')[1])
-    current_analysis_sequence = analysis_sequences_name[analysis_index].strip('{}').strip()
-    is_leakage_run = (current_analysis_sequence == "leakage")
     
-    if not is_leakage_run and current_iter_name != "Last_iter":
+    if current_iter_name != "Last_iter":
         try:
             if 0 <= analysis_index < len(analysis_sequences_name):
-                specific_iteration_bbsets = f"\nbbset pceco.EcoOrder {{SMSA1}}\nbbset pceco.SMSA1 {analysis_sequences_name[analysis_index]}\n"
+                current_analysis_sequence = analysis_sequences_name[analysis_index]
+                
+                is_leakage_run = False
+                if isinstance(current_analysis_sequence, str):
+                    is_leakage_run = (current_analysis_sequence.strip('{}').strip() == "leakage")
+
+                if not is_leakage_run:
+                    if isinstance(current_analysis_sequence, list):
+                        eco_order_parts = []
+                        bbset_lines = []
+                        for i, seq in enumerate(current_analysis_sequence, 1):
+                            smsa_name = f"SMSA{i}"
+                            eco_order_parts.append(smsa_name)
+                            bbset_lines.append(f"bbset pceco.{smsa_name} {{{seq.strip()}}}")
+                        
+                        specific_iteration_bbsets = f"\nbbset pceco.EcoOrder {{{' '.join(eco_order_parts)}}}\n" + "\n".join(bbset_lines) + "\n"
+                    else: # It's a string
+                        specific_iteration_bbsets = f"\nbbset pceco.EcoOrder {{SMSA1}}\nbbset pceco.SMSA1 {current_analysis_sequence}\n"
         except (ValueError, IndexError):
             if status_updater: status_updater(f"WARN: Could not determine analysis sequence for iteration '{current_iter_name}'.")
             pass
-    # --- END MODIFICATION ---
 
     if specific_iteration_bbsets:
         try:
@@ -357,8 +370,8 @@ def run_eco_logic(base_var_file_path, block_name, tool_name, analysis_sequences_
 
             # --- MODIFIED: Dynamic stage selection ---
             analysis_index = 0 if current_iter_name == "main" else int(current_iter_name.split('_')[1])
-            current_analysis_sequence = analysis_sequences_name[analysis_index].strip('{}').strip()
-            is_leakage_run = (current_analysis_sequence == "leakage")
+            current_analysis_sequence = analysis_sequences_name[analysis_index]
+            is_leakage_run = (isinstance(current_analysis_sequence, str) and current_analysis_sequence.strip('{}').strip() == "leakage")
 
             if is_leakage_run:
                 stages_to_run = LEAKAGE_ITER_STAGES
@@ -697,7 +710,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.19)") # Version updated
+        self.title("Multi-ECO Utility (v1.20)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
@@ -1088,18 +1101,61 @@ class EcoRunnerApp(tk.Tk):
 
     def parse_analysis_input(self, text):
         raw_text = text.strip() or DEFAULT_ANALYSIS_INPUT
-        groups = re.findall(r'{[^}]+}', raw_text)
 
-        # --- MODIFIED: Validate leakage ---
-        for group in groups:
-            content = group.strip('{}').strip()
-            words = content.split()
-            if "leakage" in words and len(words) > 1:
-                messagebox.showerror("Invalid Analysis Input", "Leakage cannot be clubbed with other stages. Please put {leakage} in its own iteration.")
-                raise ValueError("Invalid leakage configuration")
-        # --- END MODIFICATION ---
-        
-        return len(groups), groups
+        # --- MODIFIED: Custom parser for nested braces ---
+        def parse(s):
+            """
+            Parses a string for top-level curly-braced groups.
+            """
+            groups = []
+            level = 0
+            start_index = -1
+            for i, char in enumerate(s):
+                if char == '{':
+                    if level == 0:
+                        start_index = i
+                    level += 1
+                elif char == '}':
+                    level -= 1
+                    if level == 0 and start_index != -1:
+                        groups.append(s[start_index:i+1])
+                        start_index = -1
+            return groups
+
+        top_level_groups = parse(raw_text)
+
+        final_groups = []
+        for group in top_level_groups:
+            # Remove the outer braces to inspect the content
+            inner_content = group[1:-1].strip()
+            
+            # Check if the inner content itself contains braced groups (i.e., is nested)
+            if inner_content.startswith('{') and inner_content.endswith('}'):
+                nested_groups = parse(inner_content)
+                # Ensure that the entire inner content is composed of these nested groups
+                if "".join(nested_groups).replace(" ", "") == inner_content.replace(" ", ""):
+                    cleaned_nested_groups = [g[1:-1].strip() for g in nested_groups]
+                    final_groups.append(cleaned_nested_groups)
+                else:
+                     final_groups.append(group) # Not a clean nested structure, treat as a single group
+            else:
+                final_groups.append(group)
+
+        # Validate leakage
+        for group in final_groups:
+            if isinstance(group, str): # e.g., '{leakage}'
+                words = group[1:-1].split() # remove braces before splitting
+                if "leakage" in words and len(words) > 1:
+                    messagebox.showerror("Invalid Analysis Input", "Leakage cannot be clubbed with other stages. Please put {leakage} in its own iteration.")
+                    raise ValueError("Invalid leakage configuration")
+            elif isinstance(group, list): # e.g., ['max_tran_eco', 'setup_eco']
+                 for sub_group in group:
+                     if "leakage" in sub_group.split():
+                          messagebox.showerror("Invalid Analysis Input", "Leakage cannot be part of a multi-stage (nested) iteration.")
+                          raise ValueError("Invalid leakage configuration")
+
+        return len(final_groups), final_groups
+
 
 
     def save_configuration(self):

@@ -55,7 +55,6 @@ bbset sta.config.ValidConstraintModeName	{}
 #user has to provide vdomains and rails
 #user has to provide scenarios and constraints
 
-bbset mmmc.mode.modes { }
 bbns mmmc {
  bbns mode {
         bbset modes " "    

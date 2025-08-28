@@ -1,0 +1,201 @@
+####### TEMPLATE USER VAR FILE #######
+
+#user has to provide chipfinish PRO db 
+bbset chipfinish.source		{/google/gchips/ipreleases/lajolla_cpu/big_core_vec_wrapper/LAJ_A0_BIG_CORE_VEC_WRAPPER_M3_V2_R1_D1_RTLDFT_DRYRUN_PNR_PEX_070925_1/}
+
+#user to provide SCF pushdown
+#bbns scf { 
+#    bbset SOC_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/soc_constraints/LAJ_A0_M3/LAJ_A0_M3_20250424"
+#    bbset FUNC_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/func_common_constraints/LAJ_A0_M3/LAJ_A0_M3_21_APR_2025"
+#    bbset SCF_CODE_HOME "/google/gchips/ipreleases/lajolla_scf/scf_code/LAJ_A0_M3/LAJ_A0_M3_05_Feb_V3_2025"
+#    bbset scf.DFT_CONSTRAINTS_HOME "/google/gchips/ipreleases/lajolla_scf/dft_common_constraints/LAJ_A0_M3/LAJ_A0_M3_01_APR_2025_REV1"
+#    bbset scf.TECH_HOME "/google/gchips/ipreleases/lajolla_scf/tech_common_constraints/LAJ_A0_M3/LAJ_A0_M3_16_APR_2025_REV4"    
+#}
+bbset scf.common_constraints_override 1
+
+bbset scf.TECH_HOME "/google/gchips/ipreleases/lajolla_scf/tech_common_constraints/LAJ_A0_M3_28_JAN_2025_REV1P2"               -comment "SCF Tech Constraints Path"
+bbset scf.SCF_CODE_HOME "/google/gchips/ipreleases/lajolla_scf/scf_code/LAJ_A0_M3/LAJ_A0_M3_22_Jan_V1_2024"
+
+##############
+#### PEX #####
+##############
+
+#user has to provide Macro Def/Lef Files
+bbset pex.MacroDefFiles		{}
+#bbset pex.MacroLibraryFileExclude	""
+#bbset pex.MacroLefFiles		{}
+bbset pex.MacroLefFiles              {/google/gchips/lib/foundry/tsmc/n2p/tsmc/dk/v0.9_2024-11-07/lef/ip_prtn_lvts/prtn_lvts.lef /google/gchips/lib/foundry/tsmc/n2p/google/ip.raw/2024-12-11_fiducial/fiducial_h156/10Dec2024/lef/fiducial_h156.lef /google/gchips/lib/foundry/tsmc/n2p/tsmc/dk/v0.9_2025-03-06/lef/ip_temp_sensor_top/temp_sensor_top.lef  /google/gchips/lib/foundry/tsmc/n2p/tsmc/pdk.raw/2024-10-02_pre/tn02cldr013_0_9_2/N2P_DTCD_library_kit_general_v0d9_2_240913/N2P_DTCD_library_kit_general_v0d9_2_240913/LEF/N02P_DTCD_M13/N02P_DTCD_v0d9_2.lef /google/gchips/lib/foundry/tsmc/n2p/tsmc/ip.raw/v0.9_2025-01-08_tphn02p_075od12gpio_c240708_090g/digital/Front_End/lef/tphn02p_075od12gpio_c240708_090g/mt/15m/15M_1X_H_1XB_V_1XC_H_1XD_V_1YA_H_1YB_V_4Y_HVHV_2YT_HV_2Z/lef/tphn02p_075od12gpio_c240708_090g_15lm.lef}
+bbset pex.MacroLibraryFileExclude    "dwc_mipi_mphy*"
+
+
+##############
+#### MMMC #####
+##############
+
+# Explicitly specify the UPF for each mode
+#user can optionally provide func, shift, capture Upf
+#by default, func and shift are taken
+#bbset mmmc.mode.func.StaUpf	{}
+#bbset mmmc.mode.shift.StaUpf	{}
+#bbset mmmc.mode.capture.StaUpf	{}
+#bbset mmmc.mode.StaUpf		{}
+
+bbset mmmc.mode.StaUpf 		{}
+bbset mmmc.mode.shift.StaUpf 	{[bbget .mmmc.mode.StaUpf]}
+bbset mmmc.mode.func.StaUpf 	{[bbget .mmmc.mode.StaUpf]}
+bbset mmmc.mode.func_NOSI.StaUpf 	{[bbget .mmmc.mode.StaUpf]}
+
+########## CONSTRAINTS ############
+#user has to set mmc mode list
+#bbset mmmc.mode.modes		{}
+
+#user has to set Sdc for func, shift and capture modes
+#bbset mmmc.mode.func.StaSdc 	""
+#bbset mmmc.mode.shift.StaSdc 	""
+#bbset mmmc.mode.capture.StaSdc 	""
+
+#constraints
+#user has to set the Valid Constraint Mode for STA
+#bbset sta.config.ValidConstraintModeName	{}
+
+bbset sta.config.ValidConstraintModeName	{func shift func_NOSI}
+bbns mmmc {
+bbns mode {
+    bbset modes "func shift"
+    bbns func {
+      bbset StaSdc   "/google/gchips/ipreleases/lajolla_cpu/big_core_hm/LAJ_A0_BIG_CORE_HM_M3_V2_R1_D1_C9_RTLDFT/fe_release/big_core_hm/dft_sdc/big_core_hm.mission.tcl"
+      bbset AddlStaSdc   "/google/gchips/workspace/redondo-us/cbf/user/kvikass/lajolla/big_core/data/M3/femain_local_sdc.tcl"
+    }
+    bbns func_NOSI {
+      bbset StaSdc   "/google/gchips/ipreleases/lajolla_cpu/big_core_hm/LAJ_A0_BIG_CORE_HM_M3_V2_R1_D1_C9_RTLDFT/fe_release/big_core_hm/dft_sdc/big_core_hm.mission.tcl"
+      bbset AddlStaSdc   "/google/gchips/workspace/redondo-us/cbf/user/kvikass/lajolla/big_core/data/M3/femain_local_sdc.tcl"
+    }
+    bbns shift {
+      bbset StaSdc   "/google/gchips/ipreleases/lajolla_cpu/big_core_hm/LAJ_A0_BIG_CORE_HM_M3_V2_R1_D1_C9_RTLDFT/fe_release/big_core_hm/dft_sdc/big_core_hm.shift.tcl"
+      bbset AddlStaSdc   "/google/gchips/workspace/redondo-us/cbf/user/kvikass/lajolla/big_core/data/M3/femain_local_sdc.tcl"
+    }
+}
+}
+
+
+
+########### mmc commands ##########
+#user has to provide mmmc modes, StaSdc for those modes
+#user has to provide vdomains and rails
+#user has to provide scenarios and constraints
+
+bbns mmmc {
+    bbns vdomain {
+      bbset vdomains "VDD_CPU2 VDD_CPU2_M"
+      bbset gdomains "VSS"
+      bbns VDD_CPU2 {
+        bbset rail  "VDD_CPU2"
+      }
+      bbns VDD_CPU2_M {
+        bbset rail  "VDD_CPU2_M"
+      }
+      bbns VSS {
+        bbset rail "VSS"
+      }
+    } 
+    bbns mode {
+       bbset modes "func"
+       bbset func.pnrSdcs "/google/gchips/workspace/redondo-us/cbf/user/vigne/nw/LAJ/vec/inputs/M3_POST_DFT_SCAN_VAR/dft_sdc/big_core_vec_wrapper.mission.tcl"
+    }
+    bbns scenarios {
+        bbset constraints {
+            {apply "*.ssgnp-UD-*"    {VDD_CPU2 0p5850} {VDD_CPU2_M 0p6750}}
+            {apply "*.ssgnp-SUD-*"   {VDD_CPU2 0p5400} {VDD_CPU2_M 0p6750}}
+            {apply "*.ssgnp-UUD-*"   {VDD_CPU2 0p4950} {VDD_CPU2_M 0p6750}}
+            {create "*.*"}
+        }
+    }
+}
+
+
+
+
+
+
+##############
+#### STA #####
+##############
+
+#sta run name set to my_run_dir by default
+bbset sta.metrics.run_name           {my_run_dir}
+
+# Mail list
+bbset sta.metrics.maillist           {askakshay@google.com praveenkt@google.com}
+
+#user can optioanlly provide STA scenarios
+#one set is already included in the base var file
+
+######       VERY IMPORTANT    #########
+#If you enable leakage, make sure you run STA for leakage corner
+
+#bbset sta.runs {}
+bbset sta.runs { 
+func.tt-NMP-85-cworst_ccworst_t \
+func.ffgnp-USOD-125-cworst_ccworst \
+}
+		
+################
+#### PCECO #####
+################
+
+#user can optionally provide scenarios for setup and hold fixing
+#one set of scenarios is already included in the base var file
+######       VERY IMPORTANT    #########
+#If you are enabling DSA, make sure you include the following
+#For Setup : per OPP , ss_0c_cworst_ccworst_t
+#For Hold  : high OPP OD -> ff_OD_125c_rcworst
+#			 low OPP UUD -> ff_UUD_0c_cworst_ccworst
+bbns pceco {
+    bbset SetupScenarios  {func.ffgnp-USOD-125-cworst_ccworst } -comment {Scenario list for setup fixing}
+    bbset HoldScenarios   {func.ffgnp-USOD-125-cworst_ccworst } -comment {Scenario list for hold fixing}
+}
+
+#user can optionally provide Dont touch Inst and size only cells
+bbconcat pceco.plugins.setup_dont_touch.DontTouchInst		{} 
+bbconcat pceco.plugins.setup_dont_touch.SizeOnlyCells		{}
+
+#bbset pceco.plugins.eco_cell_types.DelayCellList {}
+#user can optionally provide dont use cells for eco
+bbconcat eco.DontUseCells {}
+bbconcat eco.DontUseCells {}
+
+#user has to provide DRC type   
+bbset pceco.plugins.smsa_eco.DRCType {}
+
+################
+#### PNR #####
+################
+
+#user has to provide pnr watermark tag
+bbset pnr.WatermarkRTLTag            {LAJ_A0_BIG_CORE_VEC_WRAPPER_M3_V2_R1_D1_RTLDFT} 
+
+#user can optionally provide pnr scenarios and default status
+bbset pnr.scenarios.Scenarios {func.tt-USOD_TTCN-125-typical   func.tt-NMP-85-cworst_ccworst_t}
+bbset pnr.scenarios.status.Default   {{func.tt-USOD_TTCN-125-typical {setup hold active} } {func.tt-NMP-85-cworst_ccworst_t {leakage dynamic}}}
+
+
+#ADD this only if you see issue in applyeco stage with staple vias
+#bbappend pnr.fc.ECOSetupPreCallback {
+#    proc ::applyeco::delete_staple_vias { } {
+#    
+#        if {[sizeof_collection [get_vias -quiet -filter tag==STAPLE_VIA]]} {
+#            remove_vias [get_vias -quiet -filter tag==STAPLE_VIA] -force
+#        }
+#    
+#        return 0
+#    
+#    }
+#}
+#
+
+
+#### Leakage Recovery  ####
+#Change if you want
+bbset pteco.LEAKAGE_POWER_SCENARIO { func.tt-NMP-85-cworst_ccworst_t }
+bbset pteco.SCENARIOS {func.tt-NMP-85-cworst_ccworst_t }
+

@@ -8,7 +8,7 @@ How to Start:
 /google/gchips/workspace/redondo-asia/tpe/user/askakshay/MECO/template_var_file.var
 
 
-3. Add analysis per iteration for ECO fixes. Each brace is seperate run.
+3. Add analysis per iteration for ECO fixes. Each brace is seperate run and each subbrace (limted to 2) is SMSA1 and SMSA2
 
 
 4. Fill all the inputs in the GUI (mind the timeout value)
