@@ -16,6 +16,8 @@ import threading
 import tempfile
 import json
 import fnmatch
+import getpass
+
 
 # --- Default Project/Flow Configuration --- #
 DEFAULT_SETUP_REPO_AREA = "<abs path of REPO>"
@@ -75,6 +77,38 @@ abort_resume_info = {
 def get_script_directory():
     """Returns the directory where the current Python script is located."""
     return os.path.dirname(os.path.abspath(__file__))
+
+
+
+def track_usage(block_name_value):
+    """
+    Tracks who ran the script and for which block.
+    Writes to a central log file. Fails silently if the log file is not accessible.
+    """
+    # --- CONFIGURATION ---
+    # IMPORTANT: Use an absolute path to a shared network location everyone has write access to.
+    #LOG_FILE_PATH = "/google/gchips/workspace/redondo-asia/tpe/user/askakshay/meco_track.log"
+    try:
+        # Get current user and timestamp
+        user = getpass.getuser()
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Format the log entry
+        log_entry = f"TIMESTAMP: {timestamp}, USER: {user}, BLOCK: {block_name_value}\n"
+        recipient = "askakshay@google.com"
+        command = f'echo "{log_entry}" | mail -s "MECO ALERT" {recipient}'
+        subprocess.run(command, shell=True, check=True) 
+        
+        # Append the entry to the log file
+        #with open(LOG_FILE_PATH, "a") as log_file:
+        #    log_file.write(log_entry)
+            
+    except Exception as e:
+        # If logging fails for any reason (e.g., network drive is down),
+        # do nothing and allow the main script to continue.
+        # Print a silent warning for debugging if needed.
+        #print(f"Warning: Could not write to log file. {e}")
+        pass
 
 # =============================================================================
 # Core BOB Logic Functions
@@ -710,7 +744,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.20)") # Version updated
+        self.title("Multi-ECO Utility (v1.21)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
@@ -930,6 +964,7 @@ class EcoRunnerApp(tk.Tk):
             finally:
                 self.set_controls_state('idle')
 
+
     def start_processing(self, is_resume=False):
         """Main entry point. Validates inputs, checks workspace, then starts setup or ECO run."""
         self.set_controls_state('running')
@@ -948,6 +983,9 @@ class EcoRunnerApp(tk.Tk):
             params = self._get_and_validate_params()
         except ValueError as e:
             messagebox.showerror("Input Error", str(e)); self.set_controls_state('idle'); return
+        
+        if not is_resume:
+            track_usage(params["block"])
 
         repo_area_abs = os.path.abspath(params["repo_area"])
         workspace_exists = os.path.isdir(os.path.join(repo_area_abs, "run")) and os.path.isdir(os.path.join(repo_area_abs, "repo"))
@@ -1005,6 +1043,7 @@ class EcoRunnerApp(tk.Tk):
         except ValueError:
             raise ValueError("Timeout and Interval must be valid integers.")
         return params
+
 
     def _prepare_eco_logic_args(self, params):
         """Prepares the tuple of arguments for the run_eco_logic function."""
