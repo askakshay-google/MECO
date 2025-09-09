@@ -298,6 +298,7 @@ bbset hierarchy.{block_name}.chipfinish.source {{{chipfinish_source_dir}}}
 bbset pnr.Tool {t_name}
 bbset Tool(pnr) {t_name}
 {rec}
+bbset pex.GPDScaleNetsFile  {{{os.path.join(chipfp_dir, 'rpts/chipfinish_sta_data_net_stats.rpt')}}}
 bbset pex.FillOasisFiles {{{os.path.join(pre_dir_context, 'pdp/dummyfill/outs', f'{block_name}.dummyfill.beol.oas')}}}
 bbset pex.source {{{os.path.join(pre_dir_context, 'pex')}}}
 bbset pex.TopDefFile {{{os.path.join(chipfp_dir, 'outs', f'{block_name}.pex.def.gz')}}}
@@ -744,7 +745,7 @@ def send_email(subject, body):
 class EcoRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Multi-ECO Utility (v1.21)") # Version updated
+        self.title("Multi-ECO Utility (v1.22)") # Version updated
         self.geometry("850x650")
         self.processing_thread = None
         self.setup_thread = None
